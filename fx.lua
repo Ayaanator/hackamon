@@ -1,7 +1,7 @@
 -- Four pooled particles and clock-based motion; no per-frame tables or lazy widgets.
 local M,pool={},{}
-local color={hit=0xffffff,fire=0xff1800,water=0x0030ff,grass=0x08d020,elec=0xffa000,burn=0xff0800,seed=0x08c018,par=0xffa000,def=0x1060ff,win=0x00ff30,lose=0xff0000,appear=0xffffff}
-local pat,target,t0,delay,duration,c
+local color={0xffa000,0xff4000,0x60c0ff,0x08d020,hit=0xffffff,fire=0xff1800,water=0x0030ff,grass=0x08d020,elec=0xffa000,burn=0xff0800,seed=0x08c018,par=0xffa000,def=0x1060ff,win=0x00ff30,lose=0xff0000,appear=0xffffff}
+local pat,target,t0,delay,duration,c,l
 local idle=0
 local style={bg_color=0,radius=0}
 local function light(i,c,k)
@@ -35,6 +35,7 @@ function M.start(p,side)
   delay=string.sub(p,-1)=="L" and 1500 or 0
   pat=delay>0 and string.sub(p,1,-2) or p
   target,t0,c=side=="en",badge.sys.ms(),color[pat]
+  l=(pat=="hit" or delay>0) and color[pat=="def" and 3 or (target and me or en).id] or c
   duration=delay>0 and 3200 or 650
   for i=1,4 do
     style.bg_color=i%2==0 and c or 0xffffff
@@ -49,8 +50,8 @@ function M.tick(now)
   -- Original clockwise charge: indices 1..6 trace the physical badge perimeter.
   if t<delay or pat=="win" or pat=="appear" then
     badge.led.clear() local i=(t//80)%6+1
-    light(i,c,255) light((i+4)%6+1,c,60) badge.led.show()
-  else lights(c,delay>0 and 255 or 80+math.floor(150*math.abs(math.sin(t/130)))) end
+    light(i,l,255) light((i+4)%6+1,l,60) badge.led.show()
+  else lights(l,delay>0 and 255 or 80+math.floor(150*math.abs(math.sin(t/130)))) end
   local h=t-delay
   local hit=pat=="hit" or pat=="fire"
   local tw=target and EI or PI
