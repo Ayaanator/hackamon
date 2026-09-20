@@ -15,18 +15,17 @@ home_button=1
 -- loading battle/effects, one module per tick. Buttons never compile modules.
 -- Shared game state lives in globals so battle.lua can see it.
 local scan
--- name, hp, type (1 fire 2 water 3 grass 4 electric), attack {name,power}, effect {name,power,effect}
+-- name, HP, type, attack name, special name, effect, special power (normal power is 7).
 P={
- {"PIKACHU",35,4,{"QUICK ATTACK",7},{"THUNDER WAVE",0,"par"}},
- {"CHARMANDER",39,1,{"SCRATCH",7},{"EMBER",4,"burn"}},
- {"SQUIRTLE",44,2,{"TACKLE",7},{"WITHDRAW",0,"def"}},
- {"BULBASAUR",45,3,{"TACKLE",7},{"LEECH SEED",0,"seed"}},
+ {"PIKACHU",35,4,"QUICK ATTACK","THUNDER WAVE","par",0},
+ {"CHARMANDER",39,1,"SCRATCH","EMBER","burn",4},
+ {"SQUIRTLE",44,2,"TACKLE","WITHDRAW","def",0},
+ {"BULBASAUR",45,3,"TACKLE","LEECH SEED","seed",0},
 }
 BIT,SUP,TP={1,2,4,8},{3,1,2,2},{"fire","water","grass","elec"}
-local IC={0xff1800,0x0030ff,0x08d020,0xffa000}   -- idle LED colour by type
 S,cur,act,owned=0,1,1,1
 me,en,team={},{},{}
-local nfc,nxt,mt,frame=false,0,0,0
+local nfc,nxt,frame=false,0,0
 local HM={"SCAN","SWITCH LEAD","EXIT"}
 local q,qi,after={},0,nil
 local R,EN,EB,EH,PN,PB,PH,MSG,MENU,CUE,BG,TMP
@@ -38,7 +37,7 @@ local function gcset(p)
   else collectgarbage("incremental",p,400) end
 end
 -- Sprite image files live in the app folder (the image widget accepts nothing else).
-function spr(i,m) return (m and "m" or "s")..i..".bin" end
+function spr(i) return "p"..i..".bin" end
 function log(t)
   local s=badge.sys.stats()
   badge.sys.log(t.." lua="..s.lua_used.." peak="..s.lua_peak.." free="..s.free_heap.." widgets="..s.widgets)
@@ -80,7 +79,7 @@ function say(f) after=f S=4 MENU:set_text("") MSG:set_size(272,58) advance() end
 
 function home()
   q,qi,after={},0,nil team={}
-  S=0 cur=1 en={} me=side(act) mt=badge.sys.ms() gc()
+  S=0 cur=1 en={} me=side(act) gc()
   if FX then FX.reset() end
   local n=0 for i=1,4 do if own(i) then n=n+1 end end
   BG:style({bg_color=0xf8f8f0}) PI:hidden(false) EB:hidden(true) EI:hidden(true) PB:hidden(false)
@@ -89,18 +88,6 @@ function home()
   PI:set_src(spr(act,true)) bars(P[act][1],me.hp,me.max,0)
   MSG:set_text("What will you\ndo?") menu(HM)
   log("home")
-end
--- Home idle: LEDs breathe in the lead's type colour and the lead sprite bobs.
-local function idle(now)
-  local c,k=IC[P[act][3]],math.floor(120+80*math.sin((now-mt)/500))
-  for i=1,6 do badge.led.set(i,(c//65536)*k//255,((c//256)%256)*k//255,(c%256)*k//255) end
-  badge.led.show()
-  PI:align("bottom_left",14,-70-math.floor(2+2*math.sin((now-mt)/300)))
-end
-local function bye()
-  S=10 nxt=badge.sys.ms()+600 PI:align("bottom_left",14,-70) if nfc then scan(false) end
-  MENU:set_text("") MSG:set_size(272,58)
-  save() MSG:set_text("Team saved.\nSee you next time!")
 end
 scan=function(on)
   if on then
@@ -127,12 +114,13 @@ function on_enter(root)
   log(_VERSION.." main lua "..badge.sys.heap())
   -- Render sprite images once, a few rows per tick, before any widgets exist.
   -- Bump the number when sprites change.
-  local ready=badge.fs.exists("sprites9.ok")
-  for i=1,4 do ready=ready and badge.fs.exists(spr(i,false)) and badge.fs.exists(spr(i,true)) end
+  local ready=badge.fs.exists("sprites10.ok")
+  for i=1,4 do ready=ready and badge.fs.exists(spr(i,false)) end
   if not ready then
     S=9 TMP=badge.ui.label(root,"First launch:\npreparing sprites...") TMP:align("center",0,0)
     require("gen") gc() log("renderer loaded")
   else start() end
+  on_enter=nil -- Release initialization code and its GC-configuration helper.
 end
 
 function on_tick()
@@ -152,11 +140,10 @@ function on_tick()
     else S=12 end
     return
   end
-  if S==10 then if now>=nxt then badge.app.exit() end return end
   if S==6 then
     if not BT then require("battle") gc() log("battle loaded")
-    elseif not FX then FX=require("fx") FX.init(R,EI,PI) gc() log("fx loaded")
-    else home() end
+    elseif not FX then FX=require("fx") gc() log("fx loaded")
+    elseif FX.init(R) then home() end
     return
   end
   if S==9 then
@@ -171,7 +158,7 @@ function on_tick()
     S=6 MSG:set_text("Getting ready...") MENU:set_text("")
     return
   end
-  if S==0 then idle(now) return end
+  if S==0 then FX.ambient(now,P[act][3]) return end
   if FX then FX.tick(now) end
   if S==4 then CUE:hidden(FX.busy() or (now//400)%2==1) end
   if S~=2 or not nfc or now<nxt then return end
@@ -199,7 +186,7 @@ function on_button(b,k)
     if up then cur=(cur+1)%3+1 menu(HM)
     elseif dn then cur=cur%3+1 menu(HM)
     elseif A and cur==1 then scan(true)
-    elseif A and cur==3 then bye()
+    elseif A and cur==3 then badge.app.exit()
     elseif A then for _=1,4 do act=act%4+1 if own(act) then break end end save() home() end
   elseif S==2 then
     if B then scan(false) home() end

@@ -8,16 +8,21 @@ SPR={
  {{k=0x202020,a=0x60c8a8,b=0x309878,c=0x80d860,d=0x40a040,r=0xd03030,w=0xffffff},
   "..........kkkkkk............kkcccccdk..........kcccddcccdk........kccdccccdcck.......kkcdccccccddk......kaakkcddccddk......kaaaaakkkkkkk......kaaaaaaaaaaaak.....kaarkaaaaaakraak....kaakkaaaaaakkaak....kaaaaaaaaaaaaaaak...kakaaaakbbaaakaak...kaakkkkaaaaaaaaak...kbaaaaaabaaaabaak....kaaaakkaaaaakbbk....kaaaak.kaaaak.kk....kbbbk..kbbbbk.......kbbbk..kbbbbk........kkk....kkkk.........................."}, -- Bulbasaur
 }
-local job=0
+local job=-10
 local function px(c)
   local v=(c//65536//8)*2048+((c//256)%256//4)*32+(c%256//8)
   return string.char(v%256,v//256)
 end
 GEN=function()
-  if job==0 then badge.fs.remove("sprites9.ok") end
-  local k,part=job//11,job%11
-  local id,mirror=k//2+1,k%2==1
-  local name=spr(id,mirror)
+  if job<0 then
+    local i=-job
+    if i==10 then badge.fs.remove("sprites10.ok")
+    elseif i==9 then badge.fs.remove("sprites9.ok")
+    else badge.fs.remove((i%2==0 and "m" or "s")..((i+1)//2)..".bin") end
+    job=job+1 return false
+  end
+  local id,part=job//11+1,job%11
+  local name=spr(id)
   if part==0 then
     badge.fs.write(name,string.char(0x19,0x12,0,0,40,0,40,0,80,0,0,0))
   else
@@ -25,7 +30,7 @@ GEN=function()
     local row={}
     for y=part*2-1,part*2 do
       for x=1,20 do
-        local at=(y-1)*20+(mirror and 21-x or x)
+        local at=(y-1)*20+x
         local ch=string.sub(art,at,at)
         local p=px(ch=="." and 0xf8f8f0 or pal[ch])
         row[x]=p..p
@@ -36,6 +41,6 @@ GEN=function()
   end
   job=job+1
   if job%3==0 then collectgarbage("collect") end
-  if job==88 then badge.fs.write("sprites9.ok","9") return true end
+  if job==44 then badge.fs.write("sprites10.ok","10") return true end
   return false
 end

@@ -74,7 +74,10 @@ badge={
   },
   fs={
     write=function(n,d) max_write=math.max(max_write,#d) writes=writes+1 files[n]=d end,
-    append=function(n,d) max_write=math.max(max_write,#d) files[n]=(files[n] or "")..d end,
+    append=function(n,d)
+      if mode=="interrupted" then error("injected interrupted sprite write") end
+      max_write=math.max(max_write,#d) files[n]=(files[n] or "")..d
+    end,
     remove=function(n) files[n]=nil return true end,
     exists=function(n) return files[n]~=nil end,
   },
@@ -105,7 +108,7 @@ local function ticks(n,step)
     in_generation_tick=stage==9
     on_tick()
     in_generation_tick=false
-    if stage==11 or stage==12 then assert(widgets-before<=1,"startup created multiple widgets per tick") end
+    if stage==6 or stage==11 or stage==12 then assert(widgets-before<=1,"startup created multiple widgets per tick") end
   end
 end
 local function press(b) in_button=true on_button(b,1) on_button(b,2) in_button=false end
@@ -117,6 +120,12 @@ if mode=="invalid_save" then store.owned=128 store.act=99 end
 local chunk=assert(loadfile(DIR.."/hackamon.lua"))
 chunk()
 on_enter({})
+if mode=="interrupted" then
+  local ok,err=pcall(function() ticks(120) end)
+  assert(not ok and string.find(err,"injected"),"expected interrupted write")
+  assert(files["sprites10.ok"]==nil,"stale completion marker survived interrupted regeneration")
+  return {files=files,peak=peak,writes=writes}
+end
 if mode=="screen_error" or mode=="widget_error" then
   local ok,err=pcall(function() ticks(120) end)
   assert(not ok and string.find(err,"injected"),"expected setup failure was not reached")
@@ -129,19 +138,23 @@ if mode=="screen_error" or mode=="widget_error" then
 end
 ticks(120)                       -- first-launch render: 88 parts
 for i=1,4 do
-  local front,back=files["s"..i..".bin"],files["m"..i..".bin"]
+  local front,back=files["p"..i..".bin"],files["p"..i..".bin"]
   assert(#front==3212 and #back==3212,"wrong sprite size")
   assert(string.sub(front,1,12)==string.char(0x19,0x12,0,0,40,0,40,0,80,0,0,0),"not RGB565")
   for y=0,39 do for x=0,39 do
-    local a,b=13+y*80+x*2,13+y*80+(39-x)*2
-    assert(string.sub(front,a,a+1)==string.sub(back,b,b+1),"incorrect mirror")
+    local a,b=13+y*80+x*2,13+(y//2*2)*80+(x//2*2)*2
+    assert(string.sub(front,a,a+1)==string.sub(back,b,b+1),"incorrect 2x pixel scale")
   end end
 end
-assert(files["sprites9.ok"]=="9")
+assert(files["sprites10.ok"]=="10")
 assert(max_write<=160,"renderer buffered more than two rows")
 if mode=="recipient" then assert(writes==0,"received sprites were regenerated") end
-if mode=="missing" then assert(writes==9,"missing sprite not repaired") end
+if mode=="missing" or mode=="upgrade" then assert(writes==5,"missing sprite not repaired") end
 assert(TITLE,"title not loaded")
+if mode=="upgrade" then
+  for i=1,4 do assert(files["m"..i..".bin"]==nil and files["s"..i..".bin"]==nil,"old sprite survived migration") end
+  assert(files["sprites9.ok"]==nil and files["icon.bin"]=="keep icon" and files["appdata/save"]=="keep save","migration changed unrelated data")
+end
 ticks(150)                       -- parade
 press(B.A)
 for _=1,40 do ticks(1) if S~=0 then press(B.A) press(B.DOWN) press(B.HOME) end end
@@ -177,7 +190,7 @@ for round=1,40 do
   on_button(B.HOME,2) ticks(2)
 end
 assert(widgets==allocated,"widgets grew across repeated encounters")
--- Exercise all particle patterns repeatedly; only the fixed six boxes may be created.
+-- Exercise the four preallocated particles; play must never create more widgets.
 S=3 -- Home uses its idle animation instead of FX.tick.
 for round=1,10 do
   for _,pattern in ipairs({"fire","water","grass","elec","fireL","win","lose"}) do
@@ -185,7 +198,8 @@ for round=1,10 do
   end
 end
 local settled=widgets
-assert(settled==allocated+6,"six-particle pool was not exercised")
+assert(settled==allocated,"particle pool grew during play")
+assert(peak<=17,"widget budget exceeded")
 for _=1,30 do FX.start("elec","en") ticks(5) ticks(1,4000) end
 assert(widgets==settled,"particle widgets were not reused")
 on_button(B.HOME,2) ticks(5)
