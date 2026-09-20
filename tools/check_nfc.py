@@ -7,17 +7,20 @@ ROOT = Path(__file__).resolve().parent.parent
 CHECKS = br'''
 local source=...
 local now,reads,clears,hits,last,enables,logs=0,0,0,0,nil,0,0
-local payload,err,present,enabled,pending,deny,enabled_at
+local payload,err,present,enabled,pending,deny,enabled_at,in_button,throwing
 local text=""
 local noop=function() end
-local widget={set_text=function(self,s) text=s end,set_size=noop,align=noop,hidden=noop}
+local widget={set_text=noop,set_size=noop,align=noop,hidden=noop}
 W={EN=widget,EB=widget,EH=widget,PN=widget,PB=widget,PH=widget,MSG=widget,MENU=widget,CUE=widget,BG=widget}
+W.MSG={set_text=function(self,s) text=s end,set_size=noop}
 PI=widget UI_ROOT={}
 badge={sys={ms=function() return now end,gc_step=noop,log=function(s)
-  assert(#s<220 and s:find("NFC retry:",1,true)) logs=logs+1 end},
+  assert(#s<220)
+  if s:find("NFC retry:",1,true) then logs=logs+1 else assert(s:find("NFC v3:",1,true)) end end},
   input={BUTTON={A=1,B=2,HOME=3,UP=4,DOWN=5},KIND={PRESSED=1,RELEASED=2}},
   nfc={enable=function()
-      assert(not pending,"enable raced deferred disable") enables=enables+1
+      assert(not pending,"enable raced deferred disable") assert(not in_button,"NFC started inside button") enables=enables+1
+      if throwing then error("injected enable failure") end
       enabled=not deny enabled_at=now return enabled
     end,
     disable=function() pending=true end,
@@ -32,13 +35,17 @@ BT={encounter=function(i) hits=hits+1 last=i S=3 end}
 local M=assert(load(source))()
 home=function() S=0 cur=1 act=1 end
 local function event(fn,...)
-  fn(...)
+  in_button=fn==M.button fn(...) in_button=false
   if pending then pending=false enabled=false end
 end
-local function start() home() event(M.button,1,1) assert(S==2 and enabled) end
 local function poll(t,e,card,dt)
   payload,err,present=t,e,card~=false now=now+(dt or 200)
   local before=reads event(M.tick) assert(reads-before<=1,"multiple reads in one tick")
+end
+local function start()
+  home() local before=enables event(M.button,1,1)
+  assert(S==2 and not enabled and enables==before and text:find("Starting NFC",1,true))
+  poll(nil,nil,false,100) assert(enabled)
 end
 local function restart_ticks()
   local n=enables
@@ -95,6 +102,19 @@ end
 start() event(M.button,1,1) deny=true restart_ticks()
 assert(not enabled and S==2 and text:find("unavailable",1,true))
 deny=false event(M.button,1,1) restart_ticks() poll("PKM02") assert(last==3 and not enabled)
+-- Initial startup must also be cancellable before touching the reader.
+for _,action in ipairs({"B","HOME","EXIT"}) do
+  home() event(M.button,1,1) n=enables
+  if action=="B" then event(M.button,2,1)
+  elseif action=="HOME" then event(M.button,3,2) else event(M.exit) end
+  poll(nil,nil,false,1000) assert(enables==n and not enabled)
+end
+-- A returning Lua error must not automatically repeat the native enable call.
+home() event(M.button,1,1) throwing=true
+local ok,e=pcall(function() poll(nil,nil,false,200) end)
+assert(not ok and e:find("injected enable failure",1,true))
+n=enables poll(nil,nil,false,1000) assert(enables==n)
+event(M.button,2,1) assert(S==0 and not enabled) throwing=false
 start() n=reads poll("PKM01",nil,true,100) assert(reads==n,"initial warmup skipped")
 poll("PKM01",nil,true,100) assert(last==2 and not enabled)
 start() poll("PKM04")

@@ -82,14 +82,13 @@ local function rescan()
 end
 scan=function(on)
   recovering=false
+  if nfc then badge.nfc.disable() nfc=false end
   if on then
     PI:align("bottom_left",14,-70)
-    CUE:hidden(true) MSG:set_size(118,58) nfc=badge.nfc.enable()
-    if nfc then
-      retries,recovered=0,false nxt=badge.sys.ms()+200 badge.nfc.clear() S=2
-      MSG:set_text("Scanning...\nHold tag still.") MENU:set_text("A retry\nB stop")
-    else CUE:hidden(false) MSG:set_text("NFC reader\nunavailable.") end
-  elseif nfc then badge.nfc.disable() nfc=false end
+    CUE:hidden(true) MSG:set_size(118,58)
+    retries,recovered,recovering=0,false,true S=2 nxt=badge.sys.ms()+100
+    MSG:set_text("Starting NFC...\nB to cancel.") MENU:set_text("A retry\nB stop")
+  end
 end
 
 function M.tick()
@@ -115,7 +114,8 @@ function M.tick()
   end
   if S~=2 or now<nxt then return end
   if recovering then
-    recovering=false nfc=badge.nfc.enable() nxt=now+200
+    recovering=false badge.sys.log("NFC v3: enable begin")
+    nfc=badge.nfc.enable() badge.sys.log(nfc and "NFC v3: enable ready" or "NFC v3: enable failed") nxt=now+200
     if nfc then badge.nfc.clear() MSG:set_text("Scanning...\nHold tag still.")
     else MSG:set_text("NFC unavailable.\nA to retry.") end
     return

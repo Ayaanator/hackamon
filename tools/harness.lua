@@ -83,7 +83,7 @@ badge={
   },
   nfc={
     enabled=false, text=nil,
-    enable=function() badge.nfc.enabled=mode~="no_nfc" return badge.nfc.enabled end,
+    enable=function() assert(not in_button,"NFC enable inside button") badge.nfc.enabled=mode~="no_nfc" return badge.nfc.enabled end,
     disable=function() badge.nfc.enabled=false end,
     clear=function() badge.nfc.text=nil end,
     card=function() if badge.nfc.text then return {uid="04AA"} end return nil end,
@@ -148,7 +148,10 @@ local function ticks(n,step)
     if stage==6 or stage==11 or stage==12 then assert(widgets-before<=1,"startup created multiple widgets per tick") end
   end
 end
-local function press(b) in_button=true button_cb(b,1) button_cb(b,2) in_button=false end
+local function press(b)
+  in_button=true button_cb(b,1) button_cb(b,2) in_button=false
+  if b==badge.input.BUTTON.A and S==2 and not badge.nfc.enabled then ticks(6) end
+end
 local B=badge.input.BUTTON
 
 -- ---- run ----
@@ -256,7 +259,7 @@ arrows(3)
 if mode=="invalid_save" then assert(owned==1 and act==1,"invalid save not repaired") end
 press(B.A)                       -- SCAN
 if mode=="no_nfc" then
-  assert(not badge.nfc.enabled and S==0,"unavailable NFC not handled")
+  assert(not badge.nfc.enabled and S==2,"unavailable NFC not handled")
   exit_cb()
   return {files=files,peak=peak,writes=writes}
 end

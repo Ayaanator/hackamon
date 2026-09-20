@@ -55,7 +55,7 @@ return function(dir)
  assert(S==7,"title did not load") sample("title")
  press(1) ticks(80)
  assert(S==0,"game not ready") sample("home")
- press(1) badge.nfc.text="PKM03" ticks(20)
+ press(1) ticks(10) badge.nfc.text="PKM03" ticks(20)
  for _=1,24 do if S~=4 then break end ticks(1,4000) press(1) end
  assert(S==3,"battle not ready") sample("battle")
  press(1)
