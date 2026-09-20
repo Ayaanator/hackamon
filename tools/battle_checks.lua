@@ -22,8 +22,8 @@ function push(text,target,pattern)
 end
 assert(loadfile(dir.."/battle.lua"))()
 local function setup(a,b)
-  owned,act,S,cur=15,a,3,1
-  team={} for i=1,4 do team[i]=side(i) end
+  owned,act,S,cur=31,a,3,1
+  team={} for i=1,5 do team[i]=side(i) end
   me,en=team[a],side(b,true)
   lines,rolls={}, {[16]=15,[4]=1}
 end
@@ -120,4 +120,30 @@ setup(3,4) en.hp=1 en.seed=1 me.hp=10 me.par=1 rolls[4]=0
 -- Force the enemy to use a status move; player is immobilized, seed takes the final 1 HP.
 rolls[10]=9 move(1)
 assert(en.hp==0 and me.hp==11,"seed must heal actual damage, not the nominal 1/8")
+-- Mewtwo uses level-15 non-HP stats, with the requested custom 100 HP.
+assert(P[5][1]=="MEWTWO" and P[5][2]==100 and P[5][3]==5)
+for j,v in ipairs({38,32,51,32,44}) do assert(P[5][j+6]==v) end
+assert(P[5][4]=="SWIFT" and P[5][5]=="PSYSTRIKE")
+-- Swift is special, Normal/60, no Psychic STAB, burn penalty or Defense-stage effect.
+setup(5,3) move(1)
+assert(lines[1].enemy==16 and lines[1].pattern=="hit" and en.burn==0,"Swift should deal 22")
+setup(5,3) me.burn=1 en.def=6 move(1)
+assert(lines[1].enemy==16,"Swift incorrectly used physical rules")
+setup(5,3) rolls[16]=0 move(1) assert(lines[1].enemy==20,"Swift minimum roll should deal 18")
+-- Psystrike is Psychic/100, uses Sp. Attack against physical Defense, with STAB.
+setup(5,3) en.hp=200 move(2)
+assert(lines[1].enemy==146 and lines[1].pattern=="psyL" and en.burn==0,"Psystrike should deal 54")
+setup(5,3) me.burn=1 en.def=2 en.hp=200 move(2)
+assert(lines[1].enemy==172,"Psystrike must respect Withdraw, not burn")
+setup(5,4) en.hp=200 move(2)
+assert(lines[1].enemy==68 and find("super"),"Bulbasaur's Poison typing is weak to Psychic")
+setup(5,5) move(2)
+assert(lines[1].enemy==80 and find("not very"),"Mewtwo resists Psychic")
+setup(3,5) rolls[10]=9 move(1)
+assert(lines[1].pattern=="psyL" and lines[1].target=="me" and me.hp==0,"enemy cannot use Psystrike")
+setup(1,5) move(1)
+assert(lines[1].text:find("PIKACHU used",1,true),"Quick Attack lost priority against Mewtwo")
+-- Loss ends the battle and heals at home; it no longer deletes the collection.
+setup(3,5) me.hp=1 move(1) finished()
+assert(S==0 and owned==31 and act==3,"loss changed saved ownership/lead")
 print("BATTLE CHECKS OK "..dir)

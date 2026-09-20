@@ -1,6 +1,6 @@
 -- Four pooled particles and clock-based motion; no per-frame tables or lazy widgets.
 local M,pool={},{}
-local color={0xffa000,0xff4000,0x60c0ff,0x08d020,hit=0xffffff,fire=0xff1800,water=0x0030ff,grass=0x08d020,elec=0xffa000,burn=0xff0800,seed=0x08c018,par=0xffa000,def=0x1060ff,win=0x00ff30,lose=0xff0000,appear=0xffffff}
+local color={0xffa000,0xff4000,0x60c0ff,0x08d020,0xb040ff,hit=0xffffff,fire=0xff1800,water=0x0030ff,grass=0x08d020,elec=0xffa000,psy=0xb040ff,burn=0xff0800,seed=0x08c018,par=0xffa000,def=0x1060ff,win=0x00ff30,lose=0xff0000,appear=0xffffff}
 local pat,target,t0,delay,duration,c,l
 local idle=0
 local style={bg_color=0,radius=0}
@@ -53,7 +53,7 @@ function M.tick(now)
     light(i,l,255) light((i+4)%6+1,l,60) badge.led.show()
   else lights(l,delay>0 and 255 or 80+math.floor(150*math.abs(math.sin(t/130)))) end
   local h=t-delay
-  local hit=pat=="hit" or pat=="fire"
+  local hit=pat=="hit" or pat=="fire" or pat=="psy"
   local tw=target and EI or PI
   local attacker=target and PI or EI
   local shift=hit and h>=0 and h<100 and 10 or 0

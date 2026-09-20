@@ -12,7 +12,7 @@ end
 local d,step= nil,0
 
 -- A moving parade reuses the enemy image; no separate wipe widget or rainbow table.
-local colors={0xffa000,0xff1800,0x0030ff,0x08d020}
+local colors={0xffa000,0xff1800,0x0030ff,0x08d020,0xb040ff}
 local t0,pk,finish,STAGE
 TITLE={}
 function TITLE.go() finish=true end
@@ -21,7 +21,7 @@ function TITLE.tick(now)
     local stage=STAGE STAGE=nil stage:delete() EI:hidden(true) return true
   end
   local t=now-t0
-  local k=(t//2800)%4+1
+  local k=(t//2800)%5+1
   if k~=pk then pk=k EI:set_src(spr(k)) EI:hidden(false) end
   EI:align("top_right",65-405*(t%2800)//2800,66-math.floor(5*math.abs(math.sin(t/160))))
   local c=colors[k]

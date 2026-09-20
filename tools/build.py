@@ -61,7 +61,8 @@ def build(with_icon=True):
     sizes['main.lua'] = len(body.encode('utf-8'))
     assert sizes['main.lua'] <= 65536
     sizes['sprites10.ok'] = 2
-    for i in range(1, 5):
+    sizes['trainer.id'] = 16
+    for i in range(1, 6):
         sizes[f'p{i}.bin'] = 12 + 40 * 40 * 2
     if with_icon:
         sizes['icon.bin'] = 5304
@@ -74,9 +75,9 @@ def build(with_icon=True):
     print(f'{total:6d}  total in {len(sizes)} files (Share cap 49152 bytes, 16 files)')
     print(f'With CRLF line endings: {worst} bytes; margin {49152 - worst} bytes')
     print(f'If main.lua also retains the import header: {retained_header} bytes')
-    if retained_header > 36 * 1024 or len(sizes) > 16:
-        raise SystemExit('OVER OUR 36 KiB BUDGET (including icon and CRLF)')
-    print(f'cold install {total - 4 * 3212 - 2} bytes')
+    if retained_header > 42 * 1024 or len(sizes) > 16:
+        raise SystemExit('OVER OUR 42 KiB BUDGET (including icon and CRLF)')
+    print(f'cold install {total - 5 * 3212 - 2 - 16} bytes')
     return sizes
 
 

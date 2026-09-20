@@ -8,9 +8,10 @@ wake_lock=1
 home_button=1
 ]==]
 -- Small entry chunk: gameplay is not compiled until the title is gone.
-BIT={1,2,4,8}
+BIT={1,2,4,8,16}
 S,act,owned=13,1,1
 local TMP,nxt,frame=nil,0,0
+local stamp
 function own(i) return (owned//BIT[i])%2==1 end
 local function gc() collectgarbage("collect") end
 local function gcset(p)
@@ -27,7 +28,18 @@ function log(t)
   badge.sys.log(t.." lua="..s.lua_used.." peak="..s.lua_peak.." free="..s.free_heap.." widgets="..s.widgets)
 end
 
-function save() badge.store.set_int("act",act) badge.store.set_int("owned",owned) end
+-- The marker travels with Share; the matching team stays private to this badge.
+-- A received marker never adopts the sender's collection or the receiver's old save.
+function save()
+  if not stamp then return end
+  local data=stamp..":"..owned..":"..act
+  badge.fs.write("appdata/team",data)
+  assert(badge.fs.read("appdata/team")==data,"Team save failed")
+  if badge.fs.read("trainer.id")~=stamp then
+    badge.fs.write("trainer.id",stamp)
+    assert(badge.fs.read("trainer.id")==stamp,"Transfer marker not saved")
+  end
+end
 -- Schedule screen compilation separately from the last sprite write and UI creation.
 local function start()
   S,valid=11,nil
@@ -39,14 +51,20 @@ local function enter(root)
   -- Default GC waits for memory to double before finishing a cycle; with this much live
   -- code and this little spare RAM that never happens. Collect continuously instead.
   gcset(100)
-  act=badge.store.get_int("act",1) owned=badge.store.get_int("owned",1)
-  if owned<1 or owned>15 or owned%2==0 then owned=1 end
-  if act<1 or act>4 or not own(act) then act=1 end
+  local token,o,a=string.match(badge.fs.read("appdata/team") or "","^(%x+):(%d+):(%d+)$")
+  if token and #token==16 and badge.fs.read("trainer.id")==token then
+    stamp=token owned,act=tonumber(o),tonumber(a)
+  else
+    stamp=string.format("%08x%08x",badge.sys.random(1073741824),badge.sys.random(1073741824))
+    owned,act=1,1 save()
+  end
+  if owned<1 or owned>31 or owned%2==0 then owned=1 end
+  if act<1 or act>5 or not own(act) then act=1 end
   log(badge.sys.version())
   -- Render sprite images once, a few rows per tick, before any widgets exist.
   -- Bump the number when sprites change.
   local missing=badge.fs.read("sprites10.ok")~="10" and "sprites10.ok" or nil
-  for i=1,4 do if not valid(i) then missing=spr(i) end end
+  for i=1,5 do if not valid(i) then missing=spr(i) end end
   if missing then
     log("prepare: "..missing)
     S=9 nxt=badge.sys.ms() TMP=badge.ui.label(root,"Preparing sprites...") TMP:align("center",0,0)
@@ -69,7 +87,7 @@ local function boot()
   elseif S==9 then
     badge.led.set_all(0,30,120) badge.led.show()
     S=13 local done,id=GEN() S=9
-    if id then TMP:set_text("Preparing sprite "..id.."/4") end
+    if id then TMP:set_text("Preparing sprite "..id.."/5") end
     if done then GEN=nil SPR=nil gc() log("sprites ready in "..(now-nxt).."ms") start() end
   elseif now>=frame then
     frame=now+33

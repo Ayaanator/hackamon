@@ -2,18 +2,20 @@
 local M={}
 local scan
 -- Fixed level 15, neutral nature, zero IV/EV: name, HP, type, two moves, effect,
--- Attack, Defense, Sp. Attack, Sp. Defense, Speed. Basic moves are Normal/40.
+-- Attack, Defense, Sp. Attack, Sp. Defense, Speed. Mewtwo has a custom 100 HP.
 P={
  {"PIKACHU",35,4,"QUICK ATTACK","THUNDER WAVE","par",21,17,20,20,32},
  {"CHARMANDER",36,1,"SCRATCH","EMBER","burn",20,17,23,20,24},
  {"SQUIRTLE",38,2,"TACKLE","WITHDRAW","def",19,24,20,24,17},
  {"BULBASAUR",38,3,"TACKLE","LEECH SEED","seed",19,19,24,24,18},
+ {"MEWTWO",100,5,"SWIFT","PSYSTRIKE","psy",38,32,51,32,44},
 }
-TP={"fire","water","grass","elec"}
+TP={"fire","water","grass","elec","psy"}
 cur=1 me,en,team={},{},{}
 local nfc,nxt,frame=false,0,0
 local HM={"SCAN","SWITCH LEAD","EXIT"}
 local count=0
+local choices,top
 local q,qi,after,pending={},0,nil,false
 local R=UI_ROOT
 local EN,EB,EH,PN,PB,PH,MSG,MENU,CUE,BG=W.EN,W.EB,W.EH,W.PN,W.PB,W.PH,W.MSG,W.MENU,W.CUE,W.BG
@@ -28,10 +30,15 @@ local function bars(n,mh,mm,eh)
 end
 -- A menu shares the box: prompt on the left, choices in a wider column on the right.
 function menu(t)
-  count=#t MSG:set_size(104,58) MENU:set_text(table.concat(t,"\n"))
+  count=#t choices,top=t,1 MSG:set_size(104,58) MENU:set_text(table.concat(t,"\n",1,math.min(3,count)))
   CUE:set_text(">") cursor(0) CUE:hidden(false)
 end
-function cursor(dir) cur=(cur-1+dir)%count+1 CUE:align("top_left",118,3+(cur-1)*19) end
+function cursor(dir)
+  cur=(cur-1+dir)%count+1
+  local first=cur<top and cur or (cur>top+2 and cur-2 or top)
+  if first~=top then top=first MENU:set_text(table.concat(choices,"\n",top,math.min(top+2,count))) end
+  CUE:align("top_left",118,3+(cur-top)*19)
+end
 function side(i,e)
   return {id=i,hp=P[i][2],max=P[i][2],burn=0,seed=0,def=0,par=0,name=(e and "Enemy " or "")..P[i][1]}
 end
@@ -59,9 +66,9 @@ function home()
   q,qi,after={},0,nil team={}
   S=13 cur=1 en={} me=side(act) badge.sys.gc_step()
   if FX then FX.reset() end
-  local n=0 for i=1,4 do if own(i) then n=n+1 end end
+  local n=0 for i=1,5 do if own(i) then n=n+1 end end
   BG:style({bg_color=0xf8f8f0}) PI:hidden(false) EB:hidden(true) EI:hidden(true) PB:hidden(false)
-  EN:style({text_font=16,text_color=0x101010}) EN:set_text("Team "..n.."/4")
+  EN:style({text_font=16,text_color=0x101010}) EN:set_text("Team "..n.."/5")
   EH:style({text_color=0x101010}) EH:set_text("")
   PI:set_src(spr(act,true)) bars(P[act][1],me.hp,me.max,0)
   MSG:set_text("What will you\ndo?") menu(HM)
@@ -103,7 +110,7 @@ function M.tick()
   local t=badge.nfc.read_text() badge.nfc.clear()
   local m=string.match(t or "","^PKM(%d+)$")
   local i=m and tonumber(m)+1
-  if i and i>=2 and i<=4 then scan(false) BT.encounter(i) else MSG:set_text("That is not a\nPokemon sticker.") end
+  if i and i>=2 and i<=5 then scan(false) BT.encounter(i) else MSG:set_text("That is not a\nPokemon sticker.") end
 end
 
 function M.button(b,k)
@@ -121,7 +128,7 @@ function M.button(b,k)
     if up or dn then cursor(up and -1 or 1)
     elseif A and cur==1 then scan(true)
     elseif A and cur==3 then badge.app.exit()
-    elseif A then for _=1,4 do act=act%4+1 if own(act) then break end end save() home() end
+    elseif A then for _=1,5 do act=act%5+1 if own(act) then break end end save() home() end
   elseif S==2 then
     if B then scan(false) home() end
   elseif S==3 or S==5 then BT.button(up,dn,A,B)

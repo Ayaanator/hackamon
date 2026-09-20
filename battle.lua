@@ -11,7 +11,7 @@ end
 local function bmenu() S=3 cur=1 W.MSG:set_text("What will\n"..P[me.id][1].." do?") menu(items()) end
 local function others()
   local o,t={},{}
-  for i=1,4 do if team[i] and i~=me.id and team[i].hp>0 then o[#o+1]=i t[#t+1]=P[i][1] end end
+  for i=1,5 do if team[i] and i~=me.id and team[i].hp>0 then o[#o+1]=i t[#t+1]=P[i][1] end end
   return o,t
 end
 
@@ -26,19 +26,22 @@ local function use(u,t,special,who)
   if (fx=="par" or fx=="seed") and badge.sys.random(100)>=90 then
     push(msg) push("But it missed!") return
   end
-  if not fx or fx=="burn" then
-    -- Level 15 / power 40; distinct physical/special stats, STAB, type, 85-100% roll.
-    local defense=fx and d[10] or d[8]*(2+t.def)//2
-    local dmg=(8*40*p[fx and 9 or 7]//defense)//50+2
+  if not fx or fx=="burn" or fx=="psy" then
+    -- Swift: Normal/special/60. Psystrike: Psychic/special/100, targets Defense.
+    local sp=fx or u.id==5
+    local power=u.id==5 and (special and 100 or 60) or 40
+    local defense=sp and fx~="psy" and d[10] or d[8]*(2+t.def)//2
+    local dmg=(8*power*p[sp and 9 or 7]//defense)//50+2
     dmg=dmg*(85+badge.sys.random(16))//100
-    local e=fx and (d[3]==3 and 4 or ((d[3]==1 or d[3]==2) and 1 or 2)) or 2
+    local e=fx=="psy" and (t.id==4 and 4 or (t.id==5 and 1 or 2))
+      or (fx=="burn" and (d[3]==3 and 4 or ((d[3]==1 or d[3]==2) and 1 or 2)) or 2)
     if fx then dmg=dmg*3//2 end
     dmg=dmg*e//2
-    if not fx and u.burn>0 then dmg=dmg//2 end
+    if not sp and u.burn>0 then dmg=dmg//2 end
     t.hp=math.max(0,t.hp-math.max(1,dmg))
     push(msg,target,pattern)
     if e==4 then push("It's super\neffective!") elseif e==1 then push("It's not very\neffective...") end
-    if not fx or t.hp==0 or d[3]==1 or t.burn+t.par>0 or badge.sys.random(10)~=0 then return end
+    if fx~="burn" or t.hp==0 or d[3]==1 or t.burn+t.par>0 or badge.sys.random(10)~=0 then return end
     t.burn=1 push(t.name.."\nwas burned!",who,"burn")
   else
     push(msg,target,pattern)
@@ -63,7 +66,7 @@ local function speed(s) return P[s.id][11]//(s.par>0 and 2 or 1) end
 -- Quick Attack has +1 priority. Otherwise Speed decides; ties are random.
 local function turn(move)
   local fx=P[en.id][6]
-  local special=badge.sys.random(10)>=6 and (fx=="burn" or (fx=="seed" and me.seed==0 and me.id~=4)
+  local special=badge.sys.random(10)>=6 and (fx=="burn" or fx=="psy" or (fx=="seed" and me.seed==0 and me.id~=4)
     or (fx=="par" and me.par+me.burn==0 and me.id~=1) or (fx=="def" and en.def<6))
   local a=speed(me)+(move==1 and me.id==1 and 100 or 0)
   local b=speed(en)+(not special and en.id==1 and 100 or 0)
@@ -82,15 +85,15 @@ local function turn(move)
     else owned=owned+BIT[en.id] push("You caught\n"..P[en.id][1].."!",nil,"win") save() end
     f=home
   elseif me.hp==0 then
-    push(P[me.id][1].."\nfainted!",nil,"lose") push("You lost all\nyour Pokemon...") push("Starting over\nwith PIKACHU.")
-    f=function() owned=1 act=1 save() home() end
+    push(P[me.id][1].."\nfainted!",nil,"lose") push("Your team rests\nand recovers.")
+    f=home
   end
   say(f)
 end
 
 function BT.encounter(i)
   en=side(i,true) team={} FX.reset() FX.idle(P[act][3])
-  for j=1,4 do if own(j) then team[j]=side(j) end end
+  for j=1,5 do if own(j) then team[j]=side(j) end end
   me=team[act]
   W.EB:hidden(false) EI:set_src(spr(i,false)) EI:hidden(false) log("wild "..i)
   push("Wild "..P[i][1].."\nappeared!",nil,"appear") push("Go! "..P[me.id][1].."!")

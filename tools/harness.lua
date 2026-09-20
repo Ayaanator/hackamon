@@ -91,6 +91,11 @@ badge={
   },
   fs={
     write=function(n,d)
+      if n=="appdata/team" or n=="trainer.id" then
+        if mode=="save_error" or (mode=="transfer_marker_error" and n=="trainer.id") then return nil,"storage quota" end
+        if mode=="silent_save" then return end
+        files[n]=d return
+      end
       io=io+1
       if n=="sprites10.ok" and mode=="marker_error" then return nil,"storage quota" end
       if n=="sprites10.ok" and mode=="silent_marker" then return end
@@ -147,13 +152,24 @@ local function press(b) in_button=true button_cb(b,1) button_cb(b,2) in_button=f
 local B=badge.input.BUTTON
 
 -- ---- run ----
-store.owned=3 store.act=1              -- own Pikachu and Charmander so SWITCH appears
-if mode=="invalid_save" then store.owned=128 store.act=99 end
+store.owned=15 store.act=4 -- Legacy saves must never leak into a fresh copy.
+if mode=="invalid_save" then
+  files["trainer.id"]="0123456789abcdef"
+  files["appdata/team"]="0123456789abcdef:128:99"
+end
 local chunk=assert(loadfile(DIR.."/hackamon.lua"))
 chunk()
 -- Firmware may retain callback references registered at launch.
 enter_cb,tick_cb,button_cb,exit_cb=on_enter,on_tick,on_button,on_exit
+if mode=="save_error" or mode=="silent_save" or mode=="transfer_marker_error" then
+  local ok,err=pcall(function() enter_cb({}) end)
+  assert(not ok and (err:find("Team save failed",1,true) or err:find("Transfer marker not saved",1,true)),"save failure hidden")
+  assert(S==13) ticks(3) press(B.HOME) assert(exited)
+  return {files=files,peak=peak,writes=writes}
+end
 enter_cb({})
+if EXPECT_OWNED then assert(owned==EXPECT_OWNED and act==EXPECT_ACT,"wrong team at launch") end
+if mode=="cold" or mode=="recipient" then assert(owned==1 and act==1,"fresh copy adopted someone else's team") end
 if mode=="write_error" or mode=="marker_error" or mode=="silent_marker" or mode=="silent_append" then
   local ok,err=pcall(function() ticks(120) end)
   assert(not ok and string.find(err,"Sprite"),"storage failure was not reported")
@@ -178,8 +194,8 @@ if mode=="screen_error" or mode=="widget_error" then
   print("HARNESS OK "..mode.." (no secondary error; HOME exits)")
   return {files=files,peak=peak,writes=writes}
 end
-ticks(120)                       -- first-launch render: 88 parts
-for i=1,4 do
+ticks(120)
+for i=1,5 do
   local front,back=files["p"..i..".bin"],files["p"..i..".bin"]
   assert(#front==3212 and #back==3212,"wrong sprite size")
   assert(string.sub(front,1,12)==string.char(0x19,0x12,0,0,40,0,40,0,80,0,0,0),"not RGB565")
@@ -190,9 +206,9 @@ for i=1,4 do
 end
 assert(files["sprites10.ok"]=="10")
 assert(max_write<=652,"renderer exceeded the 652-byte chunk bound")
-assert(io==0 or io==21,"expected zero cached writes or 21 generation writes")
+assert(io==0 or io==26,"expected zero cached writes or 26 generation writes")
 if mode=="recipient" or mode=="exists_false" then assert(writes==0,"received sprites were regenerated") end
-if mode=="missing" or mode=="upgrade" or mode=="short_sprite" then assert(writes==5,"missing sprite not repaired") end
+if mode=="missing" or mode=="upgrade" or mode=="short_sprite" then assert(writes==6,"missing sprite not repaired") end
 assert(TITLE,"title not loaded")
 if mode=="upgrade" then
   for i=1,4 do assert(files["m"..i..".bin"]==nil and files["s"..i..".bin"]==nil,"old sprite survived migration") end
@@ -216,6 +232,11 @@ for _=1,40 do ticks(1) if S~=0 then press(B.A) press(B.DOWN) end end
 ticks(10)
 assert(TITLE==nil,"title not dropped")
 assert(S==0 and BT and FX,"gameplay not ready")
+if mode=="save_open" then
+  assert(_G.W.PN.text==P[act][1] and PI.src==spr(act),"restored lead not displayed")
+  exit_cb()
+  return {files=files,peak=peak,writes=writes}
+end
 if mode=="scan_exit" then
   press(B.A) assert(badge.nfc.enabled,"scan did not enable NFC")
   exit_cb() assert(not badge.nfc.enabled,"registered exit did not reach gameplay cleanup")
@@ -287,6 +308,14 @@ local function encounter(code)
   press(B.A) badge.nfc.text=code ticks(20) drain()
   assert(S==3,"encounter did not reach move menu")
 end
+if mode=="save_capture" then
+  for i=2,5 do encounter("PKM0"..(i-1)) en.hp=1 press(B.A) drain() end
+  assert(owned==31,"not all five Pokemon captured")
+  for i=1,4 do press(B.DOWN) press(B.A) end
+  assert(act==5 and me.hp==100,"Mewtwo not selectable as lead")
+  exit_cb()
+  return {files=files,peak=peak,writes=writes}
+end
 -- Charge traces each physical LED, with exactly one latch per frame and no impact.
 S=3 FX.start("fireL","en")
 for step=1,6 do
@@ -317,11 +346,11 @@ badge.sys.random=random
 button_cb(B.HOME,2)
 owned,act=1,1 home()
 encounter("PKM03") en.hp=1 press(B.A) drain()
-assert(S==0 and owned==9 and store.owned==9,"capture was not saved")
+assert(S==0 and owned==9 and files["appdata/team"]:match(":9:1$"),"capture was not saved")
 encounter("PKM03") en.hp=1 press(B.A) drain()
 assert(owned==9,"duplicate capture changed ownership")
 encounter("PKM01") me.hp=1 press(B.A) drain()
-assert(S==0 and owned==1 and act==1 and store.owned==1,"loss did not reset team")
+assert(S==0 and owned==9 and act==1 and files["appdata/team"]:match(":9:1$"),"loss erased captured Pokemon")
 owned,act=3,1 home()
 encounter("PKM03")
 press(B.DOWN) press(B.DOWN) press(B.A)
@@ -330,6 +359,32 @@ arrows(1)
 press(B.A)
 assert(me.id==2 and S==4,"switch did not change Pokemon")
 drain() assert(S==3,"switch turn did not return to moves")
+-- A full collection has four replacement choices: scroll the existing three rows.
+button_cb(B.HOME,2) owned,act=31,1 home() encounter("PKM03")
+press(B.DOWN) press(B.DOWN) press(B.A)
+assert(S==5)
+for _=1,300 do
+  local old,ops=cur,ui_calls
+  press(B.DOWN)
+  assert(cur==old%4+1 and ui_calls-ops<=2,"scrolling exceeded two UI updates")
+  local rows={} for s in _G.W.MENU.text:gmatch("[^\n]+") do rows[#rows+1]=s end
+  assert(#rows==3 and rows[(_G.W.CUE.y-3)//19+1]==P[cur+1][1],"selection clipped or mislabeled")
+end
+while cur~=4 do press(B.DOWN) end
+press(B.A) assert(me.id==5 and me.max==100,"Mewtwo switch failed") drain()
+-- Both attacks and both sides use purple, with the original special timing.
+for _,target in ipairs({"me","en"}) do
+  me,en=side(5),side(5,true)
+  FX.idle(5)
+  for _,pat in ipairs({"hit","psyL"}) do
+    S=3 FX.start(pat,target) ticks(1,80)
+    if pat=="psyL" then assert(leds[2]==0xb040ff and not FX.impact())
+    else local k=80+math.floor(150*math.abs(math.sin(80/130)))
+      assert(leds[1]==(176*k//255)*65536+(64*k//255)*256+k)
+    end
+    ticks(1,4000)
+  end
+end
 button_cb(B.HOME,2) ticks(5)
 press(B.DOWN) press(B.A) ticks(5)
 button_cb(B.HOME,2) ticks(5)
