@@ -13,7 +13,7 @@ P={
 TP={"fire","water","grass","elec","psy"}
 cur=1 me,en,team={},{},{}
 local nfc,nxt,frame=false,0,0
-local retries=0
+local retries,recovering,recovered=0,false,false
 local HM={"SCAN","SWITCH LEAD","EXIT"}
 local count=0
 local choices,top
@@ -75,11 +75,19 @@ function home()
   MSG:set_text("What will you\ndo?") menu(HM)
   log("home") S=0
 end
+local function rescan()
+  if nfc then badge.nfc.disable() end
+  nfc=false retries=0 recovering,recovered=true,true nxt=badge.sys.ms()+250
+  MSG:set_text("Resetting NFC\nLift tag, then\nhold it still.")
+end
 scan=function(on)
+  recovering=false
   if on then
     PI:align("bottom_left",14,-70)
     CUE:hidden(true) MSG:set_size(118,58) nfc=badge.nfc.enable()
-    if nfc then retries,nxt=0,0 badge.nfc.clear() S=2 MSG:set_text("Scanning...\nHold a sticker\nto the badge.") MENU:set_text("B stop")
+    if nfc then
+      retries,recovered=0,false nxt=badge.sys.ms()+200 badge.nfc.clear() S=2
+      MSG:set_text("Scanning...\nHold tag still.") MENU:set_text("A retry\nB stop")
     else CUE:hidden(false) MSG:set_text("NFC reader\nunavailable.") end
   elseif nfc then badge.nfc.disable() nfc=false end
 end
@@ -105,21 +113,31 @@ function M.tick()
     end
     CUE:hidden(FX.busy() or (now//400)%2==1)
   end
-  if S~=2 or not nfc or now<nxt then return end
-  nxt=now+300
-  if not badge.nfc.card() then retries=0 return end
-  local t,err=badge.nfc.read_text()
-  if err or type(t)~="string" or not string.find(t,"%S") then
-    retries=retries+1
-    if retries>=3 then
-      retries=0 badge.nfc.clear() MSG:set_text("Lift tag, then\nscan again.")
-    else MSG:set_text("Read incomplete.\nHold tag still.") end
+  if S~=2 or now<nxt then return end
+  if recovering then
+    recovering=false nfc=badge.nfc.enable() nxt=now+200
+    if nfc then badge.nfc.clear() MSG:set_text("Scanning...\nHold tag still.")
+    else MSG:set_text("NFC unavailable.\nA to retry.") end
     return
   end
-  retries=0 badge.nfc.clear()
-  local m=string.match(t,"^%s*PKM(%d+)%s*$")
+  if not nfc then return end
+  nxt=now+200
+  if not badge.nfc.card() then retries=0 return end
+  local t,err=badge.nfc.read_text()
+  local m=not err and type(t)=="string" and string.match(t,"^%s*PKM(%d+)%s*$")
   local i=m and tonumber(m)+1
-  if i and i>=2 and i<=5 then scan(false) BT.encounter(i) else MSG:set_text("That is not a\nPokemon sticker.") end
+  if i and i>=2 and i<=#P then
+    badge.nfc.clear() scan(false) BT.encounter(i) return
+  end
+  retries=retries+1
+  if retries<3 then MSG:set_text("Reading tag...\nHold it still.")
+  elseif not recovered then
+    badge.sys.log("NFC retry: "..string.format("%q",string.sub(tostring(err or t or "empty text"),1,48)))
+    rescan()
+  else
+    retries=0 badge.nfc.clear()
+    MSG:set_text(not err and type(t)=="string" and string.find(t,"%S") and "That is not a\nPokemon sticker." or "Lift tag, then\nA to retry.")
+  end
 end
 
 function M.button(b,k)
@@ -139,12 +157,12 @@ function M.button(b,k)
     elseif A and cur==3 then badge.app.exit()
     elseif A then for _=1,5 do act=act%5+1 if own(act) then break end end save() home() end
   elseif S==2 then
-    if B then scan(false) home() end
+    if B then scan(false) home() elseif A then rescan() end
   elseif S==3 or S==5 then BT.button(up,dn,A,B)
   elseif S==4 and A and not FX.busy() then advance() end
 end
 
 function M.exit()
-  if nfc then badge.nfc.disable() end
+  scan(false)
 end
 return M
