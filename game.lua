@@ -1,4 +1,5 @@
 -- Gameplay is compiled only after startup and title resources are released.
+local M={}
 local scan
 -- Fixed level 15, neutral nature, zero IV/EV: name, HP, type, two moves, effect,
 -- Attack, Defense, Sp. Attack, Sp. Defense, Speed. Basic moves are Normal/40.
@@ -75,7 +76,7 @@ scan=function(on)
   elseif nfc then badge.nfc.disable() nfc=false end
 end
 
-function on_tick()
+function M.tick()
   if S==13 then return end
   local now=badge.sys.ms()
   if S==6 then
@@ -105,7 +106,7 @@ function on_tick()
   if i and i>=2 and i<=4 then scan(false) BT.encounter(i) else MSG:set_text("That is not a\nPokemon sticker.") end
 end
 
-function on_button(b,k)
+function M.button(b,k)
   local I=badge.input.BUTTON
   -- HOME is delivered to us (home_button=1); its Released is the reliable edge.
   if b==I.HOME then
@@ -127,9 +128,7 @@ function on_button(b,k)
   elseif S==4 and A and not FX.busy() then advance() end
 end
 
-function on_exit()
-  save() badge.led.clear() badge.led.show()
+function M.exit()
   if nfc then badge.nfc.disable() end
-  if EI then EI:delete() end
-  if PI then PI:delete() end
 end
+return M

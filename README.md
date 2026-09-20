@@ -100,12 +100,12 @@ The complete installed app, **after generation**, includes code, manifest, four
 
 | Configuration | Installed bytes | Files |
 | --- | ---: | ---: |
-| Text files with LF, with icon | 36,532 | 13 |
-| Text files with CRLF, with icon | **36,572** | **13** |
-| CRLF with icon, import header also retained in main.lua | 36,682 | 13 |
-| Text files with CRLF, without icon | 31,268 | 12 |
+| Text files with LF, with icon | 36,648 | 13 |
+| Text files with CRLF, with icon | **36,688** | **13** |
+| CRLF with icon, import header also retained in main.lua | 36,798 | 13 |
+| Text files with CRLF, without icon | 31,384 | 12 |
 
-This leaves **12,580 bytes** under the firmware's 49,152-byte sharing limit even
+This leaves **12,464 bytes** under the firmware's 49,152-byte sharing limit even
 with the image icon and Windows line endings. Our build rejects anything above
 **36 KiB**, including the retained-header variant, rather than barely fitting 48 KiB. The harness also
 counts the actual generated files, independently of the build's expected sizes.
@@ -117,10 +117,11 @@ the icon was insufficient margin. This version reduces that full bundle by about
 
 File size and runtime RAM are separate budgets. This version also reduces RAM:
 
-- A 2,326-byte entry file loads only startup code. Gameplay moves to `game.lua`,
-  compiled after sprite generation, widget construction and title cleanup. Its
-  callbacks replace the startup callbacks; a collection before loading battle
-  code releases the old startup closure. Gameplay does not compile inside buttons.
+- A 2,514-byte entry file loads only startup code. Gameplay moves to `game.lua`,
+  compiled after sprite generation, widget construction and title cleanup. Fixed
+  registered callbacks forward events to its returned handler table. The startup
+  implementation is cleared separately, so retained callback references cannot
+  keep it active. Gameplay does not compile inside buttons.
 - Four shared sprite files instead of eight separate facing files, while retaining
   original 40x40 pixel art. Opaque RGB565 avoids indexed-alpha conversion.
 - A smaller effects implementation, four preallocated particles instead of six,
@@ -147,15 +148,17 @@ commit `01cbf93`, gives:
 
 | Phase | Previous live Lua bytes | New live Lua bytes |
 | --- | ---: | ---: |
-| Main loaded | 26,345 | 9,616 |
-| Title | 31,261 | 10,682 |
-| Home after loading gameplay | 50,713 | 48,449 |
-| Battle | 51,030 | 48,766 |
-| Attack | 51,866 | 49,602 |
+| Main loaded | 26,313 | 10,515 |
+| Title | 34,082 | 13,727 |
+| Home after loading gameplay | 53,534 | 50,327 |
+| Battle | 53,851 | 51,044 |
+| Attack | 54,207 | 51,400 |
 
 These are post-GC live game allocations above the same mock-runtime baseline,
-with flash contents held outside Lua. Main is about **63% lower**, title about
-**66% lower**, and the representative attack about **4% lower**. No widgets were added.
+with flash contents held outside Lua. This corrected model keeps the original
+registered callback references alive; older measurements did not account for
+that retention. Main and title are about **60% lower**, and the representative
+attack about **5% lower**. No widgets were added.
 Deployment whitespace compression saves transfer bytes,
 not Lua runtime memory; the source remains readable in the repository root.
 They are **not** total badge RAM, transient peaks, native image/widget memory,
@@ -177,8 +180,10 @@ The previous row-at-a-time renderer made **85 separate flash-write calls** for f
 sprites. Small writes limited temporary memory, but repeatedly incurred filesystem
 overhead. This renderer batches a few rows into **21 writes**, at most one per tick,
 while keeping its write buffer under 1 KB. It caches palette conversions and uses
-incremental GC during generation. Fewer writes are verified; real seconds saved
-still depend on the physical badge and are not measured by the host tests.
+incremental GC during generation. A supplied device log on firmware
+`v0.1.2-392-gd3089c4` reports generation completing in **5,047 ms** and the next
+reopen skipping generation. That verifies caching on that badge, not a timing
+guarantee for every badge.
 
 The screen shows the current sprite number and the console reports elapsed time.
 Normally preparation happens only when sprites or their completion marker are
@@ -210,6 +215,15 @@ The regression suite covers false existence reports on both cold and cached
 launches, truncated images, and silent append failures.
 
 ## Menu responsiveness and interrupted transitions
+
+The supplied log reached `title dropped` twice but never `battle loaded` in
+`981cf00`. That loader replaced global lifecycle functions after launch. Keeping
+the originally registered callback references in the host harness reproduces
+the same stalled loading state. The entry callbacks now remain fixed and forward
+to `GAME.tick`, `GAME.button`, and `GAME.exit` only after `require("game")` succeeds.
+The tests use retained references for all events, assert their identities stay
+unchanged, and check that exiting during NFC scanning reaches gameplay cleanup.
+The previous tests resolved callback globals on every event and missed this bug.
 
 UP/DOWN now moves the existing cursor widget with one alignment call. It does not
 rebuild menu text, resize the dialogue box, or toggle other widgets per press. The
@@ -243,11 +257,12 @@ badge. Firmware versions, available native heap and fragmentation still differ.
   default; enforces the 36 KiB target and 16-file limit. `--without-icon` reports the
   optional smaller variant. Token-preserving whitespace removal and line grouping
   reduce transfer bytes, not runtime RAM. Strings and sprite artwork are preserved.
-- `python tools/run_harness.py` (requires `pip install lupa`): **92 scenarios** across
+- `python tools/run_harness.py` (requires `pip install lupa`): **96 scenarios** across
   Lua 5.4 / 5.5 and source / deployment files. Checks cold and recipient launches,
   missing assets, migration preserving saves/icon, interrupted writes and recovery,
   invalid saves, unavailable NFC, injected setup/storage errors, missing marker
-  read-back, title/game-loading/home failures, HOME escape, cursor stress tests,
+  read-back, title/game-loading/home failures, stable registered callbacks,
+  NFC cleanup via the registered exit, HOME escape, cursor stress tests,
   battle/switch/capture/loss,
   repeated encounters, bounded widget creation, pixel format and actual installed size.
   Also checks all six chase positions, one LED latch per frame, the charge delay,

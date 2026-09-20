@@ -35,6 +35,7 @@ for engine in (lua54, lua55):
         files = run(engine, directory, 'cold')
         check_installed_size(files)
         run(engine, directory, 'recipient', files)
+        run(engine, directory, 'scan_exit', files)
         run(engine, directory, 'exists_false', files)
         run(engine, directory, 'exists_false_cold')
         damaged = dict(files)
@@ -56,4 +57,4 @@ for engine in (lua54, lua55):
             run(engine, directory, failure)
         for failure in ('title_error', 'game_error', 'battle_error', 'fx_error', 'home_error', 'loading_exit'):
             run(engine, directory, failure, files)
-print('All 92 scenarios passed.')
+print('All 96 scenarios passed.')

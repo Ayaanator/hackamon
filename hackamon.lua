@@ -34,7 +34,7 @@ local function start()
   if TMP then TMP:delete() TMP=nil end
 end
 
-function on_enter(root)
+local function enter(root)
   UI_ROOT=root gc()
   -- Default GC waits for memory to double before finishing a cycle; with this much live
   -- code and this little spare RAM that never happens. Collect continuously instead.
@@ -52,10 +52,11 @@ function on_enter(root)
     S=9 nxt=badge.sys.ms() TMP=badge.ui.label(root,"Preparing sprites...") TMP:align("center",0,0)
     require("gen") gc() log("renderer")
   else start() end
-  on_enter=nil -- Release initialization code and its GC-configuration helper.
 end
+-- Registered callbacks stay stable even when firmware retains their references.
+function on_enter(root) local f=enter enter=nil f(root) end
 
-function on_tick()
+local function boot()
   local now=badge.sys.ms()
   if S==13 then return end
   if S==11 then
@@ -64,7 +65,7 @@ function on_tick()
     S=13
     if BUILD() then BUILD=nil S=7 gc() log("screens ready") else S=12 end
   elseif S==6 then
-    S=13 require("game") S=6
+    S=13 GAME=require("game") boot=nil S=6
   elseif S==9 then
     badge.led.set_all(0,30,120) badge.led.show()
     S=13 local done,id=GEN() S=9
@@ -79,11 +80,14 @@ function on_tick()
     else S=state end
   end
 end
+function on_tick() if GAME then GAME.tick() else boot() end end
 function on_button(b,k)
-  if b==badge.input.BUTTON.HOME and k==badge.input.KIND.RELEASED then badge.app.exit()
+  if GAME then GAME.button(b,k)
+  elseif b==badge.input.BUTTON.HOME and k==badge.input.KIND.RELEASED then badge.app.exit()
   elseif S==7 and b==badge.input.BUTTON.A and k==badge.input.KIND.PRESSED then S=8 TITLE.go() end
 end
 function on_exit()
+  if GAME then GAME.exit() end
   save() badge.led.clear() badge.led.show()
   if EI then EI:delete() end
   if PI then PI:delete() end

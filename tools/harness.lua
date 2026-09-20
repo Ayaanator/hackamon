@@ -3,6 +3,7 @@
 -- fails loudly on any Lua error. It does not check pixels, only that the code runs.
 local DIR=...
 local now=0
+local enter_cb,tick_cb,button_cb,exit_cb
 local store={}
 local files=INPUT_FILES or {}
 local mode=TEST_MODE or "cold"
@@ -133,14 +134,16 @@ local function ticks(n,step)
     now=now+(step or 20)
     local stage,before,beforeio,beforeread=S,widgets,io,reads
     in_generation_tick=stage==9
-    on_tick()
+    tick_cb()
+    assert(on_enter==enter_cb and on_tick==tick_cb and on_button==button_cb and on_exit==exit_cb,
+      "registered lifecycle callback was replaced")
     in_generation_tick=false
     if stage==9 then assert(io-beforeio<=1,"multiple flash writes in one tick") end
     if stage==9 then assert(reads-beforeread<=1,"multiple file read-backs in one tick") end
     if stage==6 or stage==11 or stage==12 then assert(widgets-before<=1,"startup created multiple widgets per tick") end
   end
 end
-local function press(b) in_button=true on_button(b,1) on_button(b,2) in_button=false end
+local function press(b) in_button=true button_cb(b,1) button_cb(b,2) in_button=false end
 local B=badge.input.BUTTON
 
 -- ---- run ----
@@ -148,13 +151,15 @@ store.owned=3 store.act=1              -- own Pikachu and Charmander so SWITCH a
 if mode=="invalid_save" then store.owned=128 store.act=99 end
 local chunk=assert(loadfile(DIR.."/hackamon.lua"))
 chunk()
-on_enter({})
+-- Firmware may retain callback references registered at launch.
+enter_cb,tick_cb,button_cb,exit_cb=on_enter,on_tick,on_button,on_exit
+enter_cb({})
 if mode=="write_error" or mode=="marker_error" or mode=="silent_marker" or mode=="silent_append" then
   local ok,err=pcall(function() ticks(120) end)
   assert(not ok and string.find(err,"Sprite"),"storage failure was not reported")
   assert(S==13,"failed generation not suspended")
   ticks(3) press(B.HOME) assert(exited,"HOME did not exit failed generation")
-  on_exit()
+  exit_cb()
   return {files=files,peak=peak,writes=writes}
 end
 if mode=="interrupted" then
@@ -169,7 +174,7 @@ if mode=="screen_error" or mode=="widget_error" then
   assert(S==13 and GEN==nil,"failed setup retained the renderer state")
   ticks(3) -- Must not call cleared GEN or continue a partially completed UI step.
   press(B.HOME) assert(exited,"HOME did not exit failed setup")
-  on_exit() -- A partial UI may contain EI but no PI.
+  exit_cb() -- A partial UI may contain EI but no PI.
   print("HARNESS OK "..mode.." (no secondary error; HOME exits)")
   return {files=files,peak=peak,writes=writes}
 end
@@ -199,18 +204,23 @@ if mode=="title_error" or mode=="game_error" or mode=="battle_error" or mode=="f
   local ok,err=pcall(function() ticks(40) end)
   assert(not ok and string.find(err,"injected"),"expected transition failure")
   assert(S==13,"failed transition did not enter escape state")
-  ticks(3) press(B.HOME) assert(exited,"HOME did not exit stalled transition") on_exit()
+  ticks(3) press(B.HOME) assert(exited,"HOME did not exit stalled transition") exit_cb()
   return {files=files,peak=peak,writes=writes}
 end
 if mode=="loading_exit" then
   ticks(1,100) assert(S==6,"not loading gameplay")
-  press(B.HOME) assert(exited,"HOME did not exit gameplay loading") on_exit()
+  press(B.HOME) assert(exited,"HOME did not exit gameplay loading") exit_cb()
   return {files=files,peak=peak,writes=writes}
 end
 for _=1,40 do ticks(1) if S~=0 then press(B.A) press(B.DOWN) end end
 ticks(10)
 assert(TITLE==nil,"title not dropped")
 assert(S==0 and BT and FX,"gameplay not ready")
+if mode=="scan_exit" then
+  press(B.A) assert(badge.nfc.enabled,"scan did not enable NFC")
+  exit_cb() assert(not badge.nfc.enabled,"registered exit did not reach gameplay cleanup")
+  return {files=files,peak=peak,writes=writes}
+end
 local function arrows(n)
   local text=_G.W.MENU.text
   for _=1,300 do
@@ -226,7 +236,7 @@ if mode=="invalid_save" then assert(owned==1 and act==1,"invalid save not repair
 press(B.A)                       -- SCAN
 if mode=="no_nfc" then
   assert(not badge.nfc.enabled and S==0,"unavailable NFC not handled")
-  on_exit()
+  exit_cb()
   return {files=files,peak=peak,writes=writes}
 end
 assert(badge.nfc.enabled,"scan did not enable nfc")
@@ -242,14 +252,14 @@ for _=1,24 do
 end
 assert(S==3 or S==0,"round did not finish")
 -- HOME from wherever we are, then SWITCH LEAD, then EXIT
-on_button(B.HOME,2) ticks(5)
+button_cb(B.HOME,2) ticks(5)
 assert(not badge.nfc.enabled,"nfc on at home")
 -- Interrupt dialogue repeatedly: no stale lines, callbacks, or accumulating particles.
 local allocated=widgets
 for round=1,40 do
   press(B.A) badge.nfc.text="PKM03" ticks(20)
   assert(S==4 and _G.W.MSG.text=="Wild BULBASAUR\nappeared!","unexpected encounter: S="..S.." text=".._G.W.MSG.text)
-  on_button(B.HOME,2) ticks(2)
+  button_cb(B.HOME,2) ticks(2)
 end
 assert(widgets==allocated,"widgets grew across repeated encounters")
 -- Exercise the four preallocated particles; play must never create more widgets.
@@ -264,7 +274,7 @@ assert(settled==allocated,"particle pool grew during play")
 assert(peak<=17,"widget budget exceeded")
 for _=1,30 do FX.start("elec","en") ticks(5) ticks(1,4000) end
 assert(widgets==settled,"particle widgets were not reused")
-on_button(B.HOME,2) ticks(5)
+button_cb(B.HOME,2) ticks(5)
 -- Deterministic win, duplicate capture, loss, and a real mid-battle switch.
 local function drain()
   for _=1,24 do
@@ -304,7 +314,7 @@ ticks(1,1699) press(B.A) assert(_G.W.MSG.text==message and FX.busy())
 ticks(1,40) assert(not FX.busy(),"special must finish")
 press(B.A) assert(_G.W.MSG.text~=message,"dialogue did not unlock")
 badge.sys.random=random
-on_button(B.HOME,2)
+button_cb(B.HOME,2)
 owned,act=1,1 home()
 encounter("PKM03") en.hp=1 press(B.A) drain()
 assert(S==0 and owned==9 and store.owned==9,"capture was not saved")
@@ -320,11 +330,11 @@ arrows(1)
 press(B.A)
 assert(me.id==2 and S==4,"switch did not change Pokemon")
 drain() assert(S==3,"switch turn did not return to moves")
-on_button(B.HOME,2) ticks(5)
+button_cb(B.HOME,2) ticks(5)
 press(B.DOWN) press(B.A) ticks(5)
-on_button(B.HOME,2) ticks(5)
+button_cb(B.HOME,2) ticks(5)
 press(B.DOWN) press(B.DOWN) press(B.A) ticks(200,20)
 assert(exited,"EXIT did not exit")
-on_exit()
+exit_cb()
 print("HARNESS OK "..mode.." peak_widgets="..peak.." max_write="..max_write.." writes="..io)
 return {files=files,peak=peak,writes=writes}

@@ -35,12 +35,13 @@ badge={
  app={exit=noop}
 }
 return function(dir)
+ local enter_cb,tick_cb,button_cb,exit_cb
  require=function(name)
    if not modules[name] then modules[name]=assert(loadfile(dir.."/"..name..".lua"))() or true end
    return modules[name]
  end
- local function ticks(n,dt) for _=1,n do now=now+(dt or 20) on_tick() end end
- local function press(b) on_button(b,1) on_button(b,2) end
+ local function ticks(n,dt) for _=1,n do now=now+(dt or 20) tick_cb() end end
+ local function press(b) button_cb(b,1) button_cb(b,2) end
  math.randomseed(42)
  collectgarbage("collect")
  local baseline=badge.sys.heap()
@@ -48,8 +49,9 @@ return function(dir)
    collectgarbage("collect") MARK(name,badge.sys.heap()-baseline)
  end
  local fn=assert(loadfile(dir.."/hackamon.lua")) fn() fn=nil
+ enter_cb,tick_cb,button_cb,exit_cb=on_enter,on_tick,on_button,on_exit
  sample("main loaded")
- on_enter({}) ticks(250)
+ enter_cb({}) ticks(250)
  assert(S==7,"title did not load") sample("title")
  press(1) ticks(80)
  assert(S==0,"game not ready") sample("home")
@@ -59,5 +61,7 @@ return function(dir)
  press(1)
  ticks(5) sample("attack")
  for _=1,24 do if S~=4 then break end ticks(1,4000) press(1) end
- on_button(3,2) sample("after battle")
+ button_cb(3,2) sample("after battle")
+ -- Keep every registered callback live through the last sample, like a registry.
+ assert(enter_cb and tick_cb and button_cb and exit_cb)
 end
