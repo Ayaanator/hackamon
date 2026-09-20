@@ -18,7 +18,8 @@ BIT,SUP,TP={1,2,4,8},{3,1,2,2},{"fire","water","grass","elec"}
 local IC={0xff1800,0x0030ff,0x08d020,0xffa000}   -- idle LED colour by type
 S,cur,act,owned=0,1,1,1
 me,en,team={},{},{}
-local nfc,nxt,mt=false,0,0
+local nfc,nxt,mt,frame=false,0,0,0
+local HM={"SCAN","SWITCH LEAD","EXIT"}
 local q,qi,after={},0,nil
 local R,EN,EB,EH,PN,PB,PH,MSG,MENU,CUE,BG,TMP
 function own(i) return (owned//BIT[i])%2==1 end
@@ -28,7 +29,10 @@ local function gcset(p)
   else collectgarbage("incremental",p,400) end
 end
 function spr(i,m) return (m and "m" or "s")..i..".bin" end
-function log(t) badge.sys.log(t.." free "..badge.sys.stats().free_heap) end
+function log(t)
+  local s=badge.sys.stats()
+  badge.sys.log(t.." lua="..s.lua_used.." peak="..s.lua_peak.." free="..s.free_heap.." widgets="..s.widgets)
+end
 local function bar(b,h,m)
   b:set_range(0,m) b:set_value(h)
   b:style({bg_color=h*4<=m and 0xe03030 or (h*2<=m and 0xe8b020 or 0x30c030)},"indicator")
@@ -59,6 +63,7 @@ local function advance()
 end
 function say(f) after=f S=4 MENU:set_text("") MSG:set_size(272,58) advance() end
 function home()
+  q,qi,after={},0,nil team={}
   S=0 cur=1 en={} me=side(act) mt=badge.sys.ms() gc()
   if FX then FX.reset() end
   local n=0 for i=1,4 do if own(i) then n=n+1 end end
@@ -66,7 +71,7 @@ function home()
   EN:style({text_font=16,text_color=0x101010}) EN:set_text("Team "..n.."/4")
   EH:style({text_color=0x101010}) EH:set_text("")
   PI:set_src(spr(act,true)) bars(P[act][1],me.hp,me.max,0)
-  MSG:set_text("What will you\ndo?") menu({"SCAN","SWITCH LEAD","EXIT"})
+  MSG:set_text("What will you\ndo?") menu(HM)
   log("home")
 end
 local function idle(now)
@@ -76,19 +81,13 @@ local function idle(now)
   PI:align("bottom_left",14,-70-math.floor(2+2*math.sin((now-mt)/300)))
 end
 local function bye()
-  S=10 nxt=badge.sys.ms()+3000 PI:align("bottom_left",14,-70) if nfc then scan(false) end
+  S=10 nxt=badge.sys.ms()+600 PI:align("bottom_left",14,-70) if nfc then scan(false) end
   MENU:set_text("") MSG:set_size(272,58)
-  MSG:set_text("Team saved. Power the\nbadge off and on before\nplaying again.")
-end
-function arm()
-  if FX then return end
-  MSG:set_text("Loading...") MENU:set_text("")
-  require("battle") gc() log("battle loaded")
-  FX=require("fx") FX.init(R,EI,PI) gc() log("fx loaded")
+  save() MSG:set_text("Team saved.\nSee you next time!")
 end
 scan=function(on)
   if on then
-    PI:align("bottom_left",14,-70) arm()
+    PI:align("bottom_left",14,-70)
     nfc=badge.nfc.enable()
     if nfc then badge.nfc.clear() S=2 MSG:set_text("Scanning...\nHold a sticker\nto the badge.") MENU:set_text("B stop")
     else MSG:set_text("NFC reader\nunavailable.") end
@@ -104,9 +103,12 @@ function on_enter(root)
   R=root UI_ROOT=root gc()
   gcset(100)
   act=badge.store.get_int("act",1) owned=badge.store.get_int("owned",1)
-  if not own(act) then act=1 end
+  if owned<1 or owned>15 or owned%2==0 then owned=1 end
+  if act<1 or act>4 or not own(act) then act=1 end
   log(_VERSION.." main lua "..badge.sys.heap())
-  if badge.store.get_int("imgs",0)~=8 then
+  local ready=badge.fs.exists("sprites9.ok")
+  for i=1,4 do ready=ready and badge.fs.exists(spr(i,false)) and badge.fs.exists(spr(i,true)) end
+  if not ready then
     S=9 TMP=badge.ui.label(root,"First launch:\npreparing sprites...") TMP:align("center",0,0)
     require("gen") gc() log("renderer loaded")
   else start() end
@@ -114,14 +116,23 @@ end
 function on_tick()
   local now=badge.sys.ms()
   if S==10 then if now>=nxt then badge.app.exit() end return end
-  if S==9 then
-    if (now//150)%2==0 then badge.led.set_all(0,30,120) else badge.led.set_all(0,10,40) end badge.led.show()
-    if GEN() then GEN=nil SPR=nil gc() badge.store.set_int("imgs",8) log("renderer dropped") start() end
+  if S==6 then
+    if not BT then require("battle") gc() log("battle loaded")
+    elseif not FX then FX=require("fx") FX.init(R,EI,PI) gc() log("fx loaded")
+    else home() end
     return
   end
+  if S==9 then
+    if (now//150)%2==0 then badge.led.set_all(0,30,120) else badge.led.set_all(0,10,40) end badge.led.show()
+    if GEN() then GEN=nil SPR=nil gc() log("renderer dropped") start() end
+    return
+  end
+  if now<frame then return end
+  frame=now+33 badge.sys.gc_step()
   if TITLE and TITLE.tick(now) then
     TITLE=nil gc() log("title dropped")
-    if badge.sys.stats().free_heap>=20000 then arm() MSG:set_text("What will you\ndo?") menu({"SCAN","SWITCH LEAD","EXIT"}) end
+    S=6 MSG:set_text("Getting ready...") MENU:set_text("")
+    return
   end
   if S==0 then idle(now) return end
   if FX then FX.tick(now) end
@@ -137,22 +148,17 @@ end
 function on_button(b,k)
   local I=badge.input.BUTTON
   if b==I.HOME then
-    if k==badge.input.KIND.RELEASED and S~=8 and S~=9 and S~=10 then
+    if k==badge.input.KIND.RELEASED and S~=6 and S~=8 and S~=9 and S~=10 then
       if S==7 then badge.app.exit() else scan(false) home() end
     end
     return
   end
   if k~=badge.input.KIND.PRESSED then return end
-  gc()
   local up,dn,A,B=b==I.UP,b==I.DOWN,b==I.A,b==I.B
   if S==0 then
-    local hm={"SCAN","SWITCH LEAD","EXIT"}
-    if up then cur=(cur+1)%3+1 menu(hm)
-    elseif dn then cur=cur%3+1 menu(hm)
-    elseif A and cur==1 then
-      local fr=badge.sys.stats().free_heap log("scan")
-      if FX or fr>=20000 then scan(true)
-      else MENU:set_text("") MSG:set_size(272,58) MSG:set_text("Low memory. Power the\nbadge off and on,\nthen play again.") end
+    if up then cur=(cur+1)%3+1 menu(HM)
+    elseif dn then cur=cur%3+1 menu(HM)
+    elseif A and cur==1 then scan(true)
     elseif A and cur==3 then bye()
     elseif A then for _=1,4 do act=act%4+1 if own(act) then break end end save() home() end
   elseif S==2 then

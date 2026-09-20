@@ -4,14 +4,19 @@
 local DIR=...
 local now=0
 local store={}
-local files={}
+local files=INPUT_FILES or {}
+local mode=TEST_MODE or "cold"
 local widgets=0
+local live,peak,max_write,writes=0,0,0,0
+local in_button=false
+local modules={}
 local log={}
 local errors={}
 local exited=false
 
 local function W(kind)
   widgets=widgets+1
+  live=live+1 peak=math.max(peak,live)
   local w={kind=kind,text="",hidden_=false}
   function w:style(t,sel) assert(type(t)=="table") return self end
   function w:align(a,x,y) assert(type(a)=="string") assert(math.type(x)=="integer" and math.type(y)=="integer","non-integer align "..tostring(x)..","..tostring(y)) return self end
@@ -22,7 +27,8 @@ local function W(kind)
   function w:set_src(p) assert(type(p)=="string") assert(files[p],"set_src of missing file "..p) self.src=p return self end
   function w:set_range(a,b) return self end
   function w:set_value(v) assert(math.type(v)=="integer","bar value not integer") return self end
-  function w:delete() self.deleted=true end
+  function w:bring_to_front() assert(not self.deleted) end
+  function w:delete() assert(not self.deleted,"double delete") self.deleted=true live=live-1 end
   return w
 end
 
@@ -46,7 +52,7 @@ badge={
     ms=function() return now end,
     log=function(s) log[#log+1]=s end,
     random=function(n) if n then return math.random(0,n-1) end return math.random(0,2^31) end,
-    stats=function() return {free_heap=30000,lua_used=collectgarbage("count")*1024} end,
+    stats=function() return {free_heap=30000,lua_used=math.floor(collectgarbage("count")*1024),lua_peak=0,widgets=live} end,
     heap=function() return math.floor(collectgarbage("count")*1024) end,
     gc_step=function() collectgarbage("step") end,
   },
@@ -56,15 +62,15 @@ badge={
   },
   nfc={
     enabled=false, text=nil,
-    enable=function() badge.nfc.enabled=true return true end,
+    enable=function() badge.nfc.enabled=mode~="no_nfc" return badge.nfc.enabled end,
     disable=function() badge.nfc.enabled=false end,
     clear=function() badge.nfc.text=nil end,
     card=function() if badge.nfc.text then return {uid="04AA"} end return nil end,
     read_text=function() return badge.nfc.text end,
   },
   fs={
-    write=function(n,d) files[n]=d end,
-    append=function(n,d) files[n]=(files[n] or "")..d end,
+    write=function(n,d) max_write=math.max(max_write,#d) writes=writes+1 files[n]=d end,
+    append=function(n,d) max_write=math.max(max_write,#d) files[n]=(files[n] or "")..d end,
     remove=function(n) files[n]=nil return true end,
     exists=function(n) return files[n]~=nil end,
   },
@@ -73,30 +79,55 @@ badge={
 }
 
 package.path=DIR.."/?.lua"
--- badge modules never return values through package.loaded the normal way; mimic that
-local real_require=require
+-- The firmware uses a private module cache; package is unavailable to game code.
 require=function(name)
+  assert(not in_button,"module compilation inside on_button: "..name)
+  if modules[name] then return modules[name] end
+  if name=="battle" or name=="fx" then assert(TITLE==nil,"title retained while loading gameplay") end
   local f=assert(loadfile(DIR.."/"..name..".lua"))
-  return f()
+  local result=f()
+  modules[name]=result or true
+  return modules[name]
 end
 
 local function ticks(n,step) for _=1,n do now=now+(step or 20) on_tick() end end
-local function press(b) on_button(b,1) on_button(b,2) end
+local function press(b) in_button=true on_button(b,1) on_button(b,2) in_button=false end
 local B=badge.input.BUTTON
 
 -- ---- run ----
 store.owned=3 store.act=1              -- own Pikachu and Charmander so SWITCH appears
+if mode=="invalid_save" then store.owned=128 store.act=99 end
 local chunk=assert(loadfile(DIR.."/hackamon.lua"))
 chunk()
 on_enter({})
 ticks(120)                       -- first-launch render: 88 parts
-assert(files["s1.bin"] and #files["s1.bin"]==1132,"s1.bin not rendered: "..tostring(files["s1.bin"] and #files["s1.bin"]))
-assert(files["m4.bin"] and #files["m4.bin"]==3884,"m4.bin not rendered: "..tostring(files["m4.bin"] and #files["m4.bin"]))
+for i=1,4 do
+  local front,back=files["s"..i..".bin"],files["m"..i..".bin"]
+  assert(#front==3212 and #back==3212,"wrong sprite size")
+  assert(string.sub(front,1,12)==string.char(0x19,0x12,0,0,40,0,40,0,80,0,0,0),"not RGB565")
+  for y=0,39 do for x=0,39 do
+    local a,b=13+y*80+x*2,13+y*80+(39-x)*2
+    assert(string.sub(front,a,a+1)==string.sub(back,b,b+1),"incorrect mirror")
+  end end
+end
+assert(files["sprites9.ok"]=="9")
+assert(max_write<=160,"renderer buffered more than two rows")
+if mode=="recipient" then assert(writes==0,"received sprites were regenerated") end
+if mode=="missing" then assert(writes==9,"missing sprite not repaired") end
 assert(TITLE,"title not loaded")
 ticks(150)                       -- parade
-press(B.A) ticks(40)             -- wipe to home
+press(B.A)
+for _=1,40 do ticks(1) if S~=0 then press(B.A) press(B.DOWN) press(B.HOME) end end
+ticks(10)
 assert(TITLE==nil,"title not dropped")
+assert(S==0 and BT and FX,"gameplay not ready")
+if mode=="invalid_save" then assert(owned==1 and act==1,"invalid save not repaired") end
 press(B.A)                       -- SCAN
+if mode=="no_nfc" then
+  assert(not badge.nfc.enabled and S==0,"unavailable NFC not handled")
+  on_exit()
+  return {files=files,peak=peak,writes=writes}
+end
 assert(badge.nfc.enabled,"scan did not enable nfc")
 badge.nfc.text="PKM03" ticks(20)
 assert(not badge.nfc.enabled,"nfc still on after encounter")
@@ -110,10 +141,55 @@ press(B.DOWN) press(B.DOWN) press(B.A) ticks(5) press(B.A) for _=1,12 do ticks(2
 -- HOME from wherever we are, then SWITCH LEAD, then EXIT
 on_button(B.HOME,2) ticks(5)
 assert(not badge.nfc.enabled,"nfc on at home")
+-- Interrupt dialogue repeatedly: no stale lines, callbacks, or accumulating particles.
+local allocated=widgets
+for round=1,40 do
+  press(B.A) badge.nfc.text="PKM03" ticks(20)
+  assert(S==4 and _G.W.MSG.text=="Wild BULBASAUR\nappeared!","stale dialogue survived HOME")
+  on_button(B.HOME,2) ticks(2)
+end
+assert(widgets==allocated,"widgets grew across repeated encounters")
+-- Exercise all particle patterns repeatedly; only the fixed six boxes may be created.
+for round=1,10 do
+  for _,pattern in ipairs({"fire","water","grass","elec","fireL","win","lose"}) do
+    FX.start(pattern,"en") ticks(5) ticks(1,4000)
+  end
+end
+local settled=widgets
+for _=1,30 do FX.start("elec","en") ticks(5) ticks(1,4000) end
+assert(widgets==settled,"particle widgets were not reused")
+on_button(B.HOME,2) ticks(5)
+-- Deterministic win, duplicate capture, loss, and a real mid-battle switch.
+local function drain()
+  for _=1,24 do
+    if S~=4 then return end
+    ticks(1,4000) press(B.A)
+  end
+  error("dialogue did not finish")
+end
+local function encounter(code)
+  press(B.A) badge.nfc.text=code ticks(20) drain()
+  assert(S==3,"encounter did not reach move menu")
+end
+owned,act=1,1 home()
+encounter("PKM03") en.hp=1 press(B.A) drain()
+assert(S==0 and owned==9 and store.owned==9,"capture was not saved")
+encounter("PKM03") en.hp=1 press(B.A) drain()
+assert(owned==9,"duplicate capture changed ownership")
+encounter("PKM01") me.hp=1 press(B.A) drain()
+assert(S==0 and owned==1 and act==1 and store.owned==1,"loss did not reset team")
+owned,act=3,1 home()
+encounter("PKM03")
+press(B.DOWN) press(B.DOWN) press(B.A)
+assert(S==5,"switch menu missing")
+press(B.A)
+assert(me.id==2 and S==4,"switch did not change Pokemon")
+drain() assert(S==3,"switch turn did not return to moves")
+on_button(B.HOME,2) ticks(5)
 press(B.DOWN) press(B.A) ticks(5)
 on_button(B.HOME,2) ticks(5)
 press(B.DOWN) press(B.DOWN) press(B.A) ticks(200,20)
 assert(exited,"EXIT did not exit")
 on_exit()
-print("HARNESS OK  widgets="..widgets.."  files="..(function() local n=0 for _ in pairs(files) do n=n+1 end return n end)())
-for _,l in ipairs(log) do print("  log: "..l) end
+print("HARNESS OK "..mode.." peak_widgets="..peak.." max_write="..max_write.." sprite_writes="..writes)
+return {files=files,peak=peak,writes=writes}

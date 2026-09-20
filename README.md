@@ -3,7 +3,7 @@
 A Pokemon-style game for the Hack the North 2026 hacker badge. Scan NFC stickers to
 meet wild Pokemon, battle them Game Boy style, and build your team.
 
-One file, `hackamon.lua`, installed through the
+Five small Lua files, installed through the
 [badge IDE](https://badge.hackthenorth.com/ide/).
 
 ## Pokemon
@@ -23,16 +23,15 @@ Electric. Super effective hits do 1.5x, resisted hits 0.5x.
 ## Playing
 
 - Launch: a title screen where the four Pokemon parade across a night sky, each posing
-  centre stage with its element's effects and LED colour. A wipes to the home screen.
+  on a cream stage with its element's LED colour. A wipes to the home screen.
+  Original pixel art is rendered at a crisp 2x scale (40x40 instead of 44x44).
 - HOME returns to the home screen from anywhere. **EXIT** on the home menu leaves the
-  game after a short reminder to power the badge off and on before the next play.
-  Leaving fragments the badge's memory until a reboot, and a launch on a fragmented
-  badge fails with a Lua memory error, so play stays inside the app rather than
-  bouncing through the launcher.
+  game after saving your team. HOME during the title exits; input is briefly locked
+  during sprite preparation and the transition to gameplay.
 - Home: **SCAN** turns on the NFC reader. **SWITCH LEAD** picks which Pokemon goes first.
 - Hold a sticker to the back of the badge. A wild Pokemon appears.
 - Battle: UP/DOWN pick a move, A uses it, B runs. A advances the dialogue, and HP bars
-  drop in step with the text. The attacker lunges, the target shakes and darkens, and
+  drop in step with the text. The attacker lunges, the target shakes and blinks, and
   the LEDs play in the move's colour. Attack moves are quick: a triple flash and an instant
   hit. Special moves are long: three laps around the LED ring, then all six hold for the
   impact. The struck Pokemon blinks and flames, bubbles, leaves or sparks burst over it.
@@ -54,46 +53,119 @@ along the bottom: messages on the left, move menu on the right.
 Write the code as an NDEF **Text** record onto an NTAG215 sticker with the NFC Tools
 phone app. Uppercase, no spaces.
 
-## Installing
+## Installing the memory update
 
-The game is five Lua files plus the icon. The badge has about 77 KB of RAM for
-everything, less on a badge that has been played on, so only `hackamon.lua` (manifest
-header, stats, menus, scanning, home screen) and `screens.lua` (widgets and the title
-parade, whose code is dropped after the wipe) load at launch. `battle.lua` (moves,
-effects, encounters) and `fx.lua` (lights, motion, particles) load the first time the
-player picks SCAN, before the NFC reader is switched on. `gen.lua` holds the sprite art
-and renders the image files on first launch before any widgets exist, then is dropped.
+Use the ready-built files in **[dist/](dist/)**. No Python installation is needed
+unless you edit the game. The default uses the `PKM` text icon, not `icon.bin`.
 
-1. Run `python tools/build.py`. It writes comment-stripped copies of the five Lua files
-   to `dist/` and checks the Share bundle stays under 16 files and 48 KiB. Comments cost
-   nothing in RAM but count toward that cap. Paste from `dist/`, never from the repo root.
-2. Open the badge IDE in Chrome or Edge.
-3. **Import app**, paste the whole of `dist/hackamon.lua` including the header, **Replace editor files**.
-4. Click **+** and add each of `battle.lua`, `fx.lua`, `screens.lua` and `gen.lua`, named
-   exactly, pasting the `dist/` file into each.
-5. **Choose image** to add the Pokeball icon if you want it.
-6. Badge off, USB data cable in, badge on. **Connect**, choose **USB JTAG/serial debug unit**.
-7. **Push**. The console should list `slug=hackamon` with all the files.
-8. Click **Reboot** the first time, since the manifest sets a 96 KB Lua quota.
-9. Open Hackamon from the launcher.
+1. Save your current IDE files first. Open the [badge IDE](https://badge.hackthenorth.com/ide/).
+2. **Import app**, choose `dist/hackamon.lua`, then **Replace editor files**.
+   Keep the slug `hackamon` to retain your team save.
+3. Add `battle.lua`, `fx.lua`, `screens.lua`, and `gen.lua` with **+**, pasting
+   the contents of the matching `dist/` files. Keep these exact filenames.
+4. Do not add an image icon: it would put this version over the Share size cap.
+5. Badge off, USB data cable in, badge on. **Connect**, choose **USB JTAG/serial
+   debug unit**, then **Push**. Reboot once for this update, especially if the
+   badge has just shown a memory error or its runtime manifest changed.
+6. Open Hackamon. The first launch creates the new sprites in small batches;
+   subsequent launches and recipients reuse them. Wait for the title, press A,
+   and let the brief transition finish before choosing SCAN.
 
-Push never deletes files on the badge. If an older layout left extra files in
-`/littlefs/apps/hackamon`, remove them with `rm` in the IDE console; Share allows at
-most 16 files and this app uses 15 including its eight sprite images.
+If Import app is absent, put only the header's `key=value` lines in
+`manifest.cfg` and everything after `]==]` in `main.lua`, then add the four modules.
 
-## Testing off the badge
+**Updating a badge with the old image icon:** Push does not remove remote files.
+To use this version's text icon and stay under the sharing cap, enter these exact
+commands separately in the IDE console:
 
-`python tools/run_harness.py` runs the whole game under Lua 5.5 with a mock badge API
-(needs `pip install lupa`): first-launch render, title, wipe, home, scan, a battle with
-a mid-battle switch, and exit. It catches Lua errors and bad widget calls, not visuals.
+```
+rm /littlefs/apps/hackamon/icon.bin
+reload
+```
 
-If the console says `cannot open .../data.lua`, the second file is missing or misnamed.
-If it says `main.lua is not a regular file`, the code file in the workspace is not named
-`main.lua`.
+This removes only the optional Hackamon launcher picture; the `PKM` text icon
+replaces it. Do not delete saves or other apps. If earlier versions left other
+files in this app directory, inspect them before removing anything; the build's
+size calculation assumes only the listed deployment files and generated assets.
 
-On first launch the game renders each sprite into 44x44 image files in the app folder: the enemy set is four-bit indexed with a transparent background so it can parade over the night sky, and the player set is plain RGB565 with the cream battle background baked in, which looks the same on the field but draws straight from the file instead of decoding to a 7.7 KB bitmap in RAM
-(`s1.bin` to `s4.bin` for the enemy view, `m1.bin` to `m4.bin` for the mirrored player
-view, about 20 KB total). The screen says "First launch: preparing sprites"
-for a few seconds while that happens, then every later launch is instant. If you
-change a sprite in `data.lua`, delete the matching `.bin` files in the IDE console, for
-example `rm /littlefs/apps/hackamon/s2.bin`, so they get rebuilt.
+## What changed for memory
+
+The reported `on_button` error showed 52,423 bytes used, a 98,304-byte limit,
+and a 55,563-byte peak. This does **not** prove the quota was reached: the firmware
+uses the same message for a failed system allocation, and the failed request is
+not included in those counters. The exact failed allocation needs the device log.
+Increasing the already-maximal manifest quota is not a fix.
+
+- **Opaque sprites:** both facings now use RGB565, with the cream background
+  baked in. The title's cream stage matches it. This avoids the old indexed-alpha
+  conversion path. An old 44x44 ARGB8888 decode needs 7,744 pixel bytes; a new
+  40x40 RGB565 image contains 3,200 pixel bytes. LVGL can stream RGB files when
+  configured for partial decoding; actual buffers/cache use depend on firmware.
+- **Bounded generation:** two output rows (160 bytes) per append instead of
+  retaining a complete 3,884-byte file plus its concatenation. The renderer and
+  art table are released before gameplay. This is a buffer bound, not total Lua RAM.
+- **Safe transition:** the title no longer enables the home menu halfway through
+  its wipe. Battle/effects modules load on separate ticks after title resources
+  are released, before NFC is enabled. No button callback compiles a module.
+- **Bounded effects:** six reusable particle widgets, one reusable particle-style
+  table, and animation updates no more than roughly 30 per second. Game speed
+  remains clock-based. The host harness peaks at 19 live app widgets.
+- **Clean cancellation:** HOME clears unfinished dialogue, callbacks, and battle
+  state; repeated encounters cannot inherit old messages.
+- **Share-aware assets:** `sprites9.ok` and the eight sprite files travel with the
+  app. A fresh recipient no longer rebuilds correct sprites just because private
+  store values were not transferred. A missing asset triggers regeneration.
+
+The 96 KiB quota is retained as a ceiling, not a RAM reservation or a guarantee.
+There is no supported heap setting above 96. Sparse console logs at load phases
+report Lua used/peak bytes, free system heap, and widget count.
+
+References: [badge runtime and Share guide](https://badge.hackthenorth.com/ide/README.md),
+[LVGL v9 binary decoder](https://github.com/lvgl/lvgl/blob/release/v9.2/src/libs/bin_decoder/lv_bin_decoder.c).
+The decoder reference explains the format tradeoff; it does not establish which
+LVGL configuration a particular badge runs.
+
+## Sharing to friends
+
+The default bundle after sprite generation is **46,012 bytes in 15 files**,
+including manifest, five Lua files, eight sprites, and the completion marker.
+It leaves **3,140 bytes** under Share's **49,152-byte / 16-file** cap.
+The optional image icon would increase it to 51,316 bytes, which is too large.
+Before generation the uploaded code/config is 20,315 bytes.
+
+On current firmware, use **Share > Send an app > Hackamon > A: offer app**.
+Your friend opens **Share > Receive an app** and accepts the incoming app.
+Wait for completion, return to the launcher, and open Hackamon. The friend can
+then share the same app onward; personal team saves are not transferred.
+There is no recipient-count limit stated in the guide. Each receiver still needs
+compatible firmware, enough storage, and sufficient free system RAM.
+
+Test the first sender-to-friend transfer and an onward friend-to-friend transfer.
+On both badges, try launch, immediate A presses through the title transition,
+SCAN, a battle, HOME mid-dialogue, another battle, and exit/reopen. If it fails,
+record the first error and preceding `lua=... peak=... free=... widgets=...` lines.
+The console's `heap` command before launch also helps distinguish available system
+RAM from the app quota. A reboot is a diagnostic recovery step, not a guarantee.
+
+## Building and testing
+
+`python tools/build.py` refreshes the five deployment files and checks the full
+post-generation Share bundle using the actual manifest size. Comments are stripped
+for transfer size; stripping them is not a runtime-memory optimization.
+`python tools/build.py --with-icon` intentionally fails for this build.
+
+`python tools/run_harness.py` (requires `pip install lupa`) runs 20 scenarios across
+Lua 5.4 and 5.5, against both source and deployment files:
+
+- Cold launch, a fresh recipient using received assets, missing-asset recovery,
+  invalid-save recovery, and unavailable NFC.
+- Button presses during the wipe/loading phase, repeated HOME interruptions,
+  attacks and elemental animations, switching, capture, duplicate capture,
+  loss/reset, saving, and exit.
+- Sprite headers, dimensions, exact mirroring, maximum write size, no module
+  compilation in button callbacks, title release before gameplay loading,
+  and particle/widget reuse through repeated encounters.
+
+These are host tests with mocked badge APIs. They do not measure native image
+allocation, ESP32 heap fragmentation, callback timing, appearance on the physical
+screen, USB upload, or Bluetooth transfer. Hardware validation is still required.

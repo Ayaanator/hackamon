@@ -13,7 +13,8 @@ local MOVE={fire=1,water=1,grass=1,elec=1}
 local PC={fire={0xff4000,0xffc000},water={0x40a0ff,0xd0f0ff},grass={0x20c040,0x90e060},elec={0xffe000,0xffffff}}
 local PS={fire={8,8,4},water={9,9,4},grass={11,5,2},elec={4,12,1}}
 local PB={}
-local SZ=44   -- sprite image size in px
+local SZ=40   -- sprite image size in px
+local STYLE={bg_color=0,radius=0}
 
 local function set(i,c,k) badge.led.set(i,(c//65536)*k//255,((c//256)%256)*k//255,(c%256)*k//255) end
 local function place(w,en,dx,dy) if en then w:align("top_right",-10+dx,6+dy) else w:align("bottom_left",14+dx,-70+dy) end end
@@ -34,7 +35,7 @@ local function particles(en,h,kind)
     if kind=="fire" or kind=="water" then x=2+((i*13+h//60)%36) y=40-((h//7+i*9)%40)
     elseif kind=="grass" then x=((i*11+h//40)%36) y=((h//8+i*9)%40)
     else x=badge.sys.random(34) y=badge.sys.random(34) if (i+h//50)%3==0 then w,hh=12,4 end end
-    b:set_size(w,hh) b:style({bg_color=pc[(i+h//90)%2+1],radius=ps[3]})
+    b:set_size(w,hh) STYLE.bg_color=pc[(i+h//90)%2+1] STYLE.radius=ps[3] b:style(STYLE)
     put(b,en,x,y,w,hh)
     b:hidden(kind=="elec" and badge.sys.random(3)==0)
   end

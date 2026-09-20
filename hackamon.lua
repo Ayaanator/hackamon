@@ -11,11 +11,8 @@ home_button=1
 -- PKM03 (Bulbasaur) to battle wild Pokemon; win to add them to your team. If one of
 -- yours faints you lose the whole team. UP/DOWN cursor, A select / next line, B back / run.
 -- HOME returns to the home screen from anywhere; EXIT on the home menu leaves the game.
--- Memory plan (the badge has about 77 KB for everything, less on a badge that has been
--- played on): this file plus screens.lua are all that loads at launch. battle.lua and
--- fx.lua load the first time the player picks SCAN, before the NFC reader is switched
--- on. The title code in screens.lua is dropped after the wipe, and gen.lua (sprite art
--- and the first-launch renderer) runs before the widgets exist and is dropped after.
+-- Generate opaque sprites before creating the UI. Release title resources before
+-- loading battle/effects, one module per tick. Buttons never compile modules.
 -- Shared game state lives in globals so battle.lua can see it.
 local scan
 -- name, hp, type (1 fire 2 water 3 grass 4 electric), attack {name,power}, effect {name,power,effect}
@@ -29,7 +26,8 @@ BIT,SUP,TP={1,2,4,8},{3,1,2,2},{"fire","water","grass","elec"}
 local IC={0xff1800,0x0030ff,0x08d020,0xffa000}   -- idle LED colour by type
 S,cur,act,owned=0,1,1,1
 me,en,team={},{},{}
-local nfc,nxt,mt=false,0,0
+local nfc,nxt,mt,frame=false,0,0,0
+local HM={"SCAN","SWITCH LEAD","EXIT"}
 local q,qi,after={},0,nil
 local R,EN,EB,EH,PN,PB,PH,MSG,MENU,CUE,BG,TMP
 
@@ -41,7 +39,10 @@ local function gcset(p)
 end
 -- Sprite image files live in the app folder (the image widget accepts nothing else).
 function spr(i,m) return (m and "m" or "s")..i..".bin" end
-function log(t) badge.sys.log(t.." free "..badge.sys.stats().free_heap) end
+function log(t)
+  local s=badge.sys.stats()
+  badge.sys.log(t.." lua="..s.lua_used.." peak="..s.lua_peak.." free="..s.free_heap.." widgets="..s.widgets)
+end
 
 local function bar(b,h,m)
   b:set_range(0,m) b:set_value(h)
@@ -78,6 +79,7 @@ end
 function say(f) after=f S=4 MENU:set_text("") MSG:set_size(272,58) advance() end
 
 function home()
+  q,qi,after={},0,nil team={}
   S=0 cur=1 en={} me=side(act) mt=badge.sys.ms() gc()
   if FX then FX.reset() end
   local n=0 for i=1,4 do if own(i) then n=n+1 end end
@@ -85,7 +87,7 @@ function home()
   EN:style({text_font=16,text_color=0x101010}) EN:set_text("Team "..n.."/4")
   EH:style({text_color=0x101010}) EH:set_text("")
   PI:set_src(spr(act,true)) bars(P[act][1],me.hp,me.max,0)
-  MSG:set_text("What will you\ndo?") menu({"SCAN","SWITCH LEAD","EXIT"})
+  MSG:set_text("What will you\ndo?") menu(HM)
   log("home")
 end
 -- Home idle: LEDs breathe in the lead's type colour and the lead sprite bobs.
@@ -95,23 +97,14 @@ local function idle(now)
   badge.led.show()
   PI:align("bottom_left",14,-70-math.floor(2+2*math.sin((now-mt)/300)))
 end
--- Leaving fragments the badge heap until a reboot, so say so before exiting.
 local function bye()
-  S=10 nxt=badge.sys.ms()+3000 PI:align("bottom_left",14,-70) if nfc then scan(false) end
+  S=10 nxt=badge.sys.ms()+600 PI:align("bottom_left",14,-70) if nfc then scan(false) end
   MENU:set_text("") MSG:set_size(272,58)
-  MSG:set_text("Team saved. Power the\nbadge off and on before\nplaying again.")
-end
--- The battle code and effects load right after the title is dropped, or failing that on
--- the first SCAN, before the NFC reader is on.
-function arm()
-  if FX then return end
-  MSG:set_text("Loading...") MENU:set_text("")
-  require("battle") gc() log("battle loaded")
-  FX=require("fx") FX.init(R,EI,PI) gc() log("fx loaded")
+  save() MSG:set_text("Team saved.\nSee you next time!")
 end
 scan=function(on)
   if on then
-    PI:align("bottom_left",14,-70) arm()
+    PI:align("bottom_left",14,-70)
     nfc=badge.nfc.enable()
     if nfc then badge.nfc.clear() S=2 MSG:set_text("Scanning...\nHold a sticker\nto the badge.") MENU:set_text("B stop")
     else MSG:set_text("NFC reader\nunavailable.") end
@@ -132,11 +125,14 @@ function on_enter(root)
   -- code and this little spare RAM that never happens. Collect continuously instead.
   gcset(100)
   act=badge.store.get_int("act",1) owned=badge.store.get_int("owned",1)
-  if not own(act) then act=1 end
+  if owned<1 or owned>15 or owned%2==0 then owned=1 end
+  if act<1 or act>4 or not own(act) then act=1 end
   log(_VERSION.." main lua "..badge.sys.heap())
   -- Render sprite images once, a few rows per tick, before any widgets exist.
   -- Bump the number when sprites change.
-  if badge.store.get_int("imgs",0)~=8 then
+  local ready=badge.fs.exists("sprites9.ok")
+  for i=1,4 do ready=ready and badge.fs.exists(spr(i,false)) and badge.fs.exists(spr(i,true)) end
+  if not ready then
     S=9 TMP=badge.ui.label(root,"First launch:\npreparing sprites...") TMP:align("center",0,0)
     require("gen") gc() log("renderer loaded")
   else start() end
@@ -145,16 +141,23 @@ end
 function on_tick()
   local now=badge.sys.ms()
   if S==10 then if now>=nxt then badge.app.exit() end return end
-  if S==9 then
-    if (now//150)%2==0 then badge.led.set_all(0,30,120) else badge.led.set_all(0,10,40) end badge.led.show()
-    if GEN() then GEN=nil SPR=nil gc() badge.store.set_int("imgs",8) log("renderer dropped") start() end
+  if S==6 then
+    if not BT then require("battle") gc() log("battle loaded")
+    elseif not FX then FX=require("fx") FX.init(R,EI,PI) gc() log("fx loaded")
+    else home() end
     return
   end
-  -- The block the title code just freed is the cleanest this session will offer, so the
-  -- battle code loads right here rather than later at SCAN.
+  if S==9 then
+    if (now//150)%2==0 then badge.led.set_all(0,30,120) else badge.led.set_all(0,10,40) end badge.led.show()
+    if GEN() then GEN=nil SPR=nil gc() log("renderer dropped") start() end
+    return
+  end
+  if now<frame then return end
+  frame=now+33 badge.sys.gc_step()
   if TITLE and TITLE.tick(now) then
     TITLE=nil gc() log("title dropped")
-    if badge.sys.stats().free_heap>=20000 then arm() MSG:set_text("What will you\ndo?") menu({"SCAN","SWITCH LEAD","EXIT"}) end
+    S=6 MSG:set_text("Getting ready...") MENU:set_text("")
+    return
   end
   if S==0 then idle(now) return end
   if FX then FX.tick(now) end
@@ -172,23 +175,17 @@ function on_button(b,k)
   local I=badge.input.BUTTON
   -- HOME is delivered to us (home_button=1); its Released is the reliable edge.
   if b==I.HOME then
-    if k==badge.input.KIND.RELEASED and S~=8 and S~=9 and S~=10 then
+    if k==badge.input.KIND.RELEASED and S~=6 and S~=8 and S~=9 and S~=10 then
       if S==7 then badge.app.exit() else scan(false) home() end
     end
     return
   end
   if k~=badge.input.KIND.PRESSED then return end
-  gc()
   local up,dn,A,B=b==I.UP,b==I.DOWN,b==I.A,b==I.B
   if S==0 then
-    local hm={"SCAN","SWITCH LEAD","EXIT"}
-    if up then cur=(cur+1)%3+1 menu(hm)
-    elseif dn then cur=cur%3+1 menu(hm)
-    elseif A and cur==1 then
-      -- The battle code needs about 20 KB to load; refuse cleanly instead of crashing.
-      local fr=badge.sys.stats().free_heap log("scan")
-      if FX or fr>=20000 then scan(true)
-      else MENU:set_text("") MSG:set_size(272,58) MSG:set_text("Low memory. Power the\nbadge off and on,\nthen play again.") end
+    if up then cur=(cur+1)%3+1 menu(HM)
+    elseif dn then cur=cur%3+1 menu(HM)
+    elseif A and cur==1 then scan(true)
     elseif A and cur==3 then bye()
     elseif A then for _=1,4 do act=act%4+1 if own(act) then break end end save() home() end
   elseif S==2 then

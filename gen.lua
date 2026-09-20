@@ -1,11 +1,7 @@
--- First-launch sprite renderer: palettes and 20x20 pixel art (SPR), plus GEN which writes
--- them as LVGL v9 image files. Both are installed as globals and cleared by main.lua once
--- the images exist, so none of this stays in RAM during play.
--- Scale is 2.2x: every fifth column and row is 3 px, the rest 2, so 20x20 becomes 44x44.
--- Enemy images s1..s4 are 4-bit indexed with a transparent background (1,132 bytes), so
--- they can parade over the night sky. Player images m1..m4 are RGB565 with the cream
--- battle background baked in (3,884 bytes): they look the same on the cream field but
--- draw straight from the file instead of decoding to a 7.7 KB bitmap in RAM.
+-- Preserve the original 20x20 art at a crisp integer 2x scale. Both facings are
+-- opaque RGB565 with the cream background baked in (3,212 bytes each).
+-- Write two rows per tick, never assemble a complete bitmap in Lua memory.
+-- The completion marker travels with Share; private store flags do not.
 SPR={
  {{k=0x202020,a=0xf8d030,b=0xc89820,r=0xe04040,w=0xffffff},
   ".kk..............kk..kkk............kkk..kkak..........kakk...kaak........kaak....kaaak......kaaak.....kaakkkkkkkkaak......kaaaaaaaaaaaak.....kaaaaaaaaaaaaaak....kaakwaaaaaakwaak....kaakkaaaaaakkaak....kaaaaaakkaaaaaak...krraaaakaaaakaaarrk.krraaaaakaakaaaarrk..kaaaaaaakkaaaaakkk..kaaaaaaaaaaaaakaak.kaaakaaaaaaaakaaaak.kaaaakaaaaaakaaaak..kbbaaaaaaaaaaaabbk...kkbaaakaakaaabkk......kkkkkkkkkkkkk..."}, -- Pikachu
@@ -17,73 +13,34 @@ SPR={
   "..........kkkkkk............kkcccccdk..........kcccddcccdk........kccdccccdcck.......kkcdccccccddk......kaakkcddccddk......kaaaaakkkkkkk......kaaaaaaaaaaaak.....kaarkaaaaaakraak....kaakkaaaaaakkaak....kaaaaaaaaaaaaaaak...kakaaaakbbaaakaak...kaakkkkaaaaaaaaak...kbaaaaaabaaaabaak....kaaaakkaaaaakbbk....kaaaak.kaaaak.kk....kbbbk..kbbbbk.......kbbbk..kbbbbk........kkk....kkkk.........................."}, -- Bulbasaur
 }
 
-local N,W,BG=20,44,0xf8f8f0
-local acc,job={},0
-local function wd(i) return (i%5==0) and 3 or 2 end
-local function px16(c)
+local job=0
+local function px(c)
   local v=(c//65536//8)*2048+((c//256)%256//4)*32+(c%256//8)
   return string.char(v%256,v//256)
 end
-
--- Parts 1..10 each render two sprite rows into acc; part 11 writes the file in one go.
-local function render(id,mirror,name,part)
-  if part==11 then badge.fs.write(name,table.concat(acc)) acc={} return end
-  local pal,spr=SPR[id][1],SPR[id][2]
-  local keys={}
-  for k in pairs(pal) do keys[#keys+1]=k end
-  table.sort(keys)
-  local idx={}
-  for i,k in ipairs(keys) do idx[k]=i end
-  if part==1 then
-    if mirror then
-      acc={string.char(0x19,0x12,0,0,W,0,W,0,W*2,0,0,0)}
-    else
-      -- header, then 16 palette entries as B,G,R,A; entry 0 is fully transparent
-      local p={string.char(0x19,0x09,0,0,W,0,W,0,24,0,0,0),string.char(0,0,0,0)}
-      for _,k in ipairs(keys) do local c=pal[k] p[#p+1]=string.char(c%256,(c//256)%256,c//65536,255) end
-      for _=#keys+2,16 do p[#p+1]=string.char(0,0,0,0) end
-      acc={table.concat(p)}
-    end
-  end
-  for y=(part-1)*2+1,part*2 do
-    local o,row=(y-1)*N,nil
-    if mirror then
-      local parts,cache={},{}
-      for x=1,N do
-        local ch=string.sub(spr,o+N+1-x,o+N+1-x)
-        local key=ch..wd(x)
-        local p=cache[key]
-        if not p then p=string.rep(px16(ch=="." and BG or pal[ch]),wd(x)) cache[key]=p end
-        parts[x]=p
-      end
-      row=table.concat(parts)
-    else
-      local v,n={},0
-      for x=1,N do
-        local ch=string.sub(spr,o+x,o+x)
-        local i=(ch==".") and 0 or idx[ch]
-        for _=1,wd(x) do n=n+1 v[n]=i end
-      end
-      local b={}
-      for i=1,W//2 do b[i]=v[2*i-1]*16+v[2*i] end
-      b[#b+1]=0 b[#b+1]=0                       -- pad the row to a 24-byte stride
-      row=string.char(table.unpack(b))
-    end
-    acc[#acc+1]=string.rep(row,wd(y))
-  end
-end
-
--- One step of the first-launch sequence: 8 images x 11 parts. Returns true when all are
--- written. Also removes appdata copies left by an earlier build so they do not count
--- against the storage quota.
 GEN=function()
-  if job==0 then
-    for i=1,4 do badge.fs.remove("appdata/s"..i..".bin") badge.fs.remove("appdata/m"..i..".bin") end
+  if job==0 then badge.fs.remove("sprites9.ok") end
+  local k,part=job//11,job%11
+  local id,mirror=k//2+1,k%2==1
+  local name=spr(id,mirror)
+  if part==0 then
+    badge.fs.write(name,string.char(0x19,0x12,0,0,40,0,40,0,80,0,0,0))
+  else
+    local pal,art=SPR[id][1],SPR[id][2]
+    local row={}
+    for y=part*2-1,part*2 do
+      for x=1,20 do
+        local at=(y-1)*20+(mirror and 21-x or x)
+        local ch=string.sub(art,at,at)
+        local p=px(ch=="." and 0xf8f8f0 or pal[ch])
+        row[x]=p..p
+      end
+      local bytes=table.concat(row)
+      badge.fs.append(name,bytes..bytes)
+    end
   end
   job=job+1
-  local k=(job-1)//11+1
-  local id,mirror=(k+1)//2,(k%2==0)
-  render(id,mirror,(mirror and "m" or "s")..id..".bin",(job-1)%11+1)
   if job%3==0 then collectgarbage("collect") end
-  return job>=88
+  if job==88 then badge.fs.write("sprites9.ok","9") return true end
+  return false
 end
