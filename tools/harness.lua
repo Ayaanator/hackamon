@@ -16,6 +16,7 @@ local log={}
 local errors={}
 local exited=false
 local ui_calls=0
+local leds,shows={},0
 
 local function W(kind)
   assert(loading_module~="screens","screen module constructed widgets during require")
@@ -35,7 +36,7 @@ local function W(kind)
   function w:hidden(b) self.hidden_=b return self end
   function w:set_src(p) assert(type(p)=="string") assert(files[p],"set_src of missing file "..p) self.src=p return self end
   function w:set_range(a,b) return self end
-  function w:set_value(v) assert(math.type(v)=="integer","bar value not integer") return self end
+  function w:set_value(v) assert(math.type(v)=="integer","bar value not integer") self.value=v return self end
   function w:bring_to_front() assert(not self.deleted) end
   function w:delete()
     assert(not self.deleted,"double delete") self.deleted=true live=live-1
@@ -59,9 +60,11 @@ badge={
     set=function(i,r,g,b)
       assert(i>=1 and i<=6,"led index "..i)
       for _,v in ipairs{r,g,b} do assert(math.type(v)=="integer" and v>=0 and v<=255,"led channel "..tostring(v)) end
+      leds[i]=r*65536+g*256+b
     end,
-    set_all=function(r,g,b) badge.led.set(1,r,g,b) end,
-    clear=function() end, show=function() end, count=function() return 6 end,
+    set_all=function(r,g,b) for i=1,6 do badge.led.set(i,r,g,b) end end,
+    clear=function() for i=1,6 do leds[i]=0 end end,
+    show=function() shows=shows+1 end, count=function() return 6 end,
   },
   sys={
     ms=function() return now end,
@@ -270,6 +273,34 @@ local function encounter(code)
   press(B.A) badge.nfc.text=code ticks(20) drain()
   assert(S==3,"encounter did not reach move menu")
 end
+-- Charge traces each physical LED, with exactly one latch per frame and no impact.
+S=3 FX.start("fireL","en")
+for step=1,6 do
+  local before=shows ticks(1,80)
+  local head=step%6+1
+  for i=1,6 do
+    assert((leds[i]~=0)==(i==head or i==(head+4)%6+1),"charge does not trace the six LEDs")
+  end
+  assert(shows==before+1 and FX.busy() and not FX.impact(),"charge latching/timing changed")
+  assert(EI.x==-10 and PI.x==14 and not EI.hidden_,"special impacted before the charge finished")
+end
+FX.reset()
+-- HP remains unchanged on screen until 1500ms; A cannot skip the 3200ms special.
+owned,act=15,2 home() encounter("PKM03")
+local random=badge.sys.random
+badge.sys.random=function(n) return n==16 and 15 or n==4 and 1 or 0 end
+press(B.DOWN) press(B.A)
+assert(_G.W.EB.value==en.max and en.hp==12,"HP changed visually before the hit")
+local message=_G.W.MSG.text
+ticks(1,1400) press(B.A)
+assert(_G.W.EB.value==en.max and _G.W.MSG.text==message and FX.busy())
+ticks(1,100)
+assert(_G.W.EB.value==14 and FX.impact() and FX.busy(),"HP did not land with impact")
+ticks(1,1699) press(B.A) assert(_G.W.MSG.text==message and FX.busy())
+ticks(1,40) assert(not FX.busy(),"special must finish")
+press(B.A) assert(_G.W.MSG.text~=message,"dialogue did not unlock")
+badge.sys.random=random
+on_button(B.HOME,2)
 owned,act=1,1 home()
 encounter("PKM03") en.hp=1 press(B.A) drain()
 assert(S==0 and owned==9 and store.owned==9,"capture was not saved")

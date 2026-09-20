@@ -4,10 +4,31 @@ python tools/build.py [--without-icon]
 Always budget for the optional 5,304-byte icon and CRLF by default.
 """
 import argparse
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LUA = ['hackamon.lua', 'battle.lua', 'fx.lua', 'gen.lua', 'screens.lua']
+
+# Preserve tokens and quoted art/dialogue. No identifier
+# renaming or bytecode: the deploy files remain portable across badge Lua versions.
+TOKEN = re.compile(r'''"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|--[^\n]*|0[xX][\da-fA-F]+(?:\.[\da-fA-F]*)?(?:[pP][+-]?\d+)?|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|[a-zA-Z_]\w*|\.\.\.|\.\.|//|<<|>>|==|~=|<=|>=|::|[^\s]''')
+
+
+def compact(line):
+    if re.search(r'\[(=*)\[', line):
+        raise ValueError('Long Lua strings/comments need explicit build support')
+    tokens = TOKEN.findall(line)
+    out, previous = [], ''
+    for token in tokens:
+        if token.startswith('--'):
+            break
+        if previous and ((re.match(r'\w', previous[-1]) and re.match(r'\w', token[0]))
+                         or TOKEN.findall(previous + token) != [previous, token]):
+            out.append(' ')
+        out.append(token)
+        previous = token
+    return ''.join(out)
 
 
 def build(with_icon=True):
@@ -25,8 +46,11 @@ def build(with_icon=True):
                 if s == ']==]':
                     in_header = False
             elif s and not s.startswith('--'):
-                out.append(s)
-        text = '\n'.join(out) + '\n'
+                out.append(compact(s))
+        header_end = out.index(']==]') + 1 if ']==]' in out else 0
+        header, body = out[:header_end], out[header_end:]
+        # Group lines to reduce Windows CRLF overhead; source files stay readable.
+        text = '\n'.join(header + [compact(' '.join(body[i:i+16])) for i in range(0, len(body), 16)]) + '\n'
         (dist / name).write_text(text, encoding='utf-8', newline='\n')
         sizes[name] = len(text.encode('utf-8'))
     bundle = (dist / 'hackamon.lua').read_text(encoding='utf-8')

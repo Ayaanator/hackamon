@@ -15,20 +15,21 @@ home_button=1
 -- loading battle/effects, one module per tick. Buttons never compile modules.
 -- Shared game state lives in globals so battle.lua can see it.
 local scan
--- name, HP, type, attack name, special name, effect, special power (normal power is 7).
+-- Fixed level 15, neutral nature, zero IV/EV: name, HP, type, two moves, effect,
+-- Attack, Defense, Sp. Attack, Sp. Defense, Speed. Basic moves are Normal/40.
 P={
- {"PIKACHU",35,4,"QUICK ATTACK","THUNDER WAVE","par",0},
- {"CHARMANDER",39,1,"SCRATCH","EMBER","burn",4},
- {"SQUIRTLE",44,2,"TACKLE","WITHDRAW","def",0},
- {"BULBASAUR",45,3,"TACKLE","LEECH SEED","seed",0},
+ {"PIKACHU",35,4,"QUICK ATTACK","THUNDER WAVE","par",21,17,20,20,32},
+ {"CHARMANDER",36,1,"SCRATCH","EMBER","burn",20,17,23,20,24},
+ {"SQUIRTLE",38,2,"TACKLE","WITHDRAW","def",19,24,20,24,17},
+ {"BULBASAUR",38,3,"TACKLE","LEECH SEED","seed",19,19,24,24,18},
 }
-BIT,SUP,TP={1,2,4,8},{3,1,2,2},{"fire","water","grass","elec"}
+BIT,TP={1,2,4,8},{"fire","water","grass","elec"}
 S,cur,act,owned=0,1,1,1
 me,en,team={},{},{}
 local nfc,nxt,frame=false,0,0
 local HM={"SCAN","SWITCH LEAD","EXIT"}
 local count=0
-local q,qi,after={},0,nil
+local q,qi,after,pending={},0,nil,false
 local R,EN,EB,EH,PN,PB,PH,MSG,MENU,CUE,BG,TMP
 
 function own(i) return (owned//BIT[i])%2==1 end
@@ -68,8 +69,10 @@ function push(m,f,p) q[#q+1]={m,P[me.id][1],me.hp,me.max,en.id and en.hp or 0,f,
 local function advance()
   if qi<#q then
     qi=qi+1 local e=q[qi]
-    MSG:set_text(e[1]) bars(e[2],e[3],e[4],e[5])
+    MSG:set_text(e[1])
     if e[7] then FX.start(e[7],e[6]) end
+    pending=not FX.impact()
+    if not pending then bars(e[2],e[3],e[4],e[5]) end
     return
   end
   q,qi={},0 CUE:hidden(true) local f=after after=nil if f then f() end
@@ -171,7 +174,12 @@ function on_tick()
   end
   if S==0 then FX.ambient(now,P[act][3]) return end
   if FX then FX.tick(now) end
-  if S==4 then CUE:hidden(FX.busy() or (now//400)%2==1) end
+  if S==4 then
+    if pending and FX.impact() then
+      pending=false local e=q[qi] bars(e[2],e[3],e[4],e[5])
+    end
+    CUE:hidden(FX.busy() or (now//400)%2==1)
+  end
   if S~=2 or not nfc or now<nxt then return end
   nxt=now+300
   if not badge.nfc.card() then return end

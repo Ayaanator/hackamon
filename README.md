@@ -12,13 +12,38 @@ You start with Pikachu. The other three live on NFC stickers.
 
 | Code | Pokemon | HP | Type | Attack | Effect move |
 | --- | --- | --- | --- | --- | --- |
-| starter | Pikachu | 35 | Electric | Quick Attack | Thunder Wave: paralyzes, enemy may lose its turn for 3 turns |
-| `PKM01` | Charmander | 39 | Fire | Scratch | Ember: damage plus a burn that hurts each turn |
-| `PKM02` | Squirtle | 44 | Water | Tackle | Withdraw: halves incoming damage for two turns |
-| `PKM03` | Bulbasaur | 45 | Grass | Tackle | Leech Seed: drains the enemy and heals you each turn |
+| starter | Pikachu | 35 | Electric | Quick Attack | Thunder Wave: 90% accurate; paralysis, no damage |
+| `PKM01` | Charmander | 36 | Fire | Scratch | Ember: 40 power, special Fire damage, 10% burn chance |
+| `PKM02` | Squirtle | 38 | Water | Tackle | Withdraw: raises physical Defense one stage, up to +6 |
+| `PKM03` | Bulbasaur | 38 | Grass/Poison | Tackle | Leech Seed: 90% accurate; drains 1/8 max HP per turn |
 
-Fire beats Grass, Grass beats Water, Water beats Fire, Electric beats Water, Grass resists
-Electric. Super effective hits do 1.5x, resisted hits 0.5x.
+Stats are fixed at level 15, neutral nature, zero IVs/EVs. Quick Attack, Scratch,
+and Tackle are **Normal-type physical attacks, power 40**, regardless of the
+Pokemon using them. Quick Attack has +1 priority; otherwise Speed decides who
+acts first, with random ties. A fainted Pokemon cannot act.
+
+Damage uses the level/power/Attack/Defense formula, separate special stats for
+Ember, an 85-100% random roll, 1.5x same-type bonus, 2x super effectiveness and
+0.5x resistance. In this move set, Ember is the only damaging elemental move:
+it is strong against Bulbasaur, resisted by Squirtle/Charmander, and neutral
+against Pikachu. Normal attacks have white impact effects. Withdraw acts on its
+user without making the opponent lunge or flash as if damaged.
+
+Burn halves physical damage and drains 1/16 max HP each turn; Fire types cannot
+burn. Paralysis halves Speed and prevents 25% of moves on either side; Electric
+types cannot be paralyzed. Both persist until the encounter ends, including
+through switches, and cannot coexist. Withdraw lasts until switching, affects
+physical damage only, and raises Defense to 1.5x at +1, 2x at +2, up to 4x at +6.
+Leech Seed fails against Grass, persists until the seeded Pokemon switches,
+and heals only the HP actually drained. Seed drains resolve before burn damage.
+
+These rules follow the modern mechanics implemented by Pokemon Showdown's
+[move data](https://github.com/smogon/pokemon-showdown/blob/master/data/moves.ts),
+[status conditions](https://github.com/smogon/pokemon-showdown/blob/master/data/conditions.ts),
+[species stats](https://github.com/smogon/pokemon-showdown/blob/master/data/pokedex.ts),
+and [damage calculation](https://github.com/smogon/pokemon-showdown/blob/master/sim/battle-actions.ts).
+This remains a small badge adaptation: no PP, critical hits, abilities, held items,
+weather, or leveling. The existing capture-on-win and team-reset-on-loss rules remain.
 
 ## Playing
 
@@ -26,8 +51,11 @@ Electric. Super effective hits do 1.5x, resisted hits 0.5x.
 - Home: UP/DOWN selects SCAN, SWITCH LEAD, or EXIT; A confirms.
 - Scan an NFC sticker to encounter its Pokemon. UP/DOWN selects a move, A attacks
   or advances dialogue, and B runs. SWITCH is available when you own another Pokemon.
-- Attacks retain lunges, impact shakes/blinks, coloured particles and six-LED pulses.
-  Special moves charge for 900 ms before impact. The home sprite bobs and LEDs breathe.
+- Attacks retain lunges, impact shakes/blinks and coloured particles. Special moves
+  restore the original clockwise six-LED chase and automatic **1,500 ms charge**,
+  followed by impact; the full effect lasts 3,200 ms. Press A once, then watch the
+  charge; holding A is not required. HP bars change at impact and A cannot skip
+  the animation. The home sprite bobs and LEDs breathe.
 - Every encounter starts with your team healed. Winning captures a new Pokemon;
   duplicates do not change ownership. Losing resets your team to Pikachu.
 - HOME returns to the home menu during play and exits from the title or interrupted
@@ -71,11 +99,11 @@ The complete installed app, **after generation**, includes code, manifest, four
 
 | Configuration | Installed bytes | Files |
 | --- | ---: | ---: |
-| Text files with LF, with icon | 36,028 | 12 |
-| Text files with CRLF, with icon | **36,484** | **12** |
-| Text files with CRLF, without icon | 31,180 | 11 |
+| Text files with LF, with icon | 36,774 | 12 |
+| Text files with CRLF, with icon | **36,813** | **12** |
+| Text files with CRLF, without icon | 31,509 | 11 |
 
-This leaves **12,668 bytes** under the firmware's 49,152-byte sharing limit even
+This leaves **12,339 bytes** under the firmware's 49,152-byte sharing limit even
 with the image icon and Windows line endings. Our build rejects anything above
 **36 KiB**, rather than just checking that it barely fits 48 KiB. The harness also
 counts the actual generated files, independently of the build's expected sizes.
@@ -108,13 +136,17 @@ A repeatable **64-bit host Lua 5.5** comparison against commit `be431b3` gives:
 
 | Phase | Previous live Lua bytes | New live Lua bytes |
 | --- | ---: | ---: |
-| Title | 33,586 | 30,771 |
-| Home after loading gameplay | 56,610 | 47,040 |
-| Battle | 56,863 | 47,357 |
-| Attack | 58,228 | 48,326 |
+| Title | 33,586 | 31,205 |
+| Home after loading gameplay | 56,610 | 50,657 |
+| Battle | 56,863 | 50,974 |
+| Attack | 58,228 | 51,810 |
 
 These are post-GC live game allocations above the same mock-runtime baseline,
-with flash contents held outside Lua. The attack measurement is about **17% lower**.
+with flash contents held outside Lua. The attack measurement is about **11% lower**.
+The corrected mechanics and restored chase add 3,484 live Lua bytes during this
+attack compared with the immediately preceding `9e22cdc` build (48,326 bytes).
+They add no widgets. Deployment whitespace compression saves transfer bytes,
+not Lua runtime memory; the source remains readable in the repository root.
 They are **not** total badge RAM, transient peaks, native image/widget memory,
 ESP32 timing, or a claim that every low-memory badge will run the game.
 
@@ -178,8 +210,8 @@ badge. Firmware versions, available native heap and fragmentation still differ.
 
 - `python tools/build.py`: regenerates `dist/`; budgets for the icon and CRLF by
   default; enforces the 36 KiB target and 16-file limit. `--without-icon` reports the
-  optional smaller variant. Comment and indentation removal reduce transfer bytes,
-  not runtime RAM.
+  optional smaller variant. Token-preserving whitespace removal and line grouping
+  reduce transfer bytes, not runtime RAM. Strings and sprite artwork are preserved.
 - `python tools/run_harness.py` (requires `pip install lupa`): **72 scenarios** across
   Lua 5.4 / 5.5 and source / deployment files. Checks cold and recipient launches,
   missing assets, migration preserving saves/icon, interrupted writes and recovery,
@@ -187,6 +219,11 @@ badge. Firmware versions, available native heap and fragmentation still differ.
   read-back, title/loading/home failures, HOME escape, cursor stress tests,
   battle/switch/capture/loss,
   repeated encounters, bounded widget creation, pixel format and actual installed size.
+  Also checks all six chase positions, one LED latch per frame, the charge delay,
+  HP/impact synchronization and protection against skipping a special animation.
+- `python tools/check_battle.py`: deterministic damage, accuracy, status, priority,
+  switching, type immunity and stat tests on both Lua versions and source/dist;
+  checks whitespace compaction against numeric, quoted and operator edge cases.
 - `python tools/profile_memory.py --compare be431b3`: repeats the live Lua comparison
   above using the baseline commit's deployment files and the current `dist/` files.
 

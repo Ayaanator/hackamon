@@ -1,11 +1,14 @@
 -- Four pooled particles and clock-based motion; no per-frame tables or lazy widgets.
 local M,pool={},{}
-local color={fire=0xff1800,water=0x0030ff,grass=0x08d020,elec=0xffa000,burn=0xff0800,seed=0x08c018,par=0xffa000,def=0x1060ff,win=0x00ff30,lose=0xff0000,appear=0xffffff}
+local color={hit=0xffffff,fire=0xff1800,water=0x0030ff,grass=0x08d020,elec=0xffa000,burn=0xff0800,seed=0x08c018,par=0xffa000,def=0x1060ff,win=0x00ff30,lose=0xff0000,appear=0xffffff}
 local pat,target,t0,delay,duration,c
 local idle=0
 local style={bg_color=0,radius=0}
+local function light(i,c,k)
+  badge.led.set(i,(c//65536)*k//255,((c//256)%256)*k//255,(c%256)*k//255)
+end
 local function lights(c,k)
-  badge.led.set_all((c//65536)*k//255,((c//256)%256)*k//255,(c%256)*k//255) badge.led.show()
+  for i=1,6 do light(i,c,k) end badge.led.show()
 end
 local function place(w,enemy,x,y)
   w:align(enemy and "top_right" or "bottom_left",(enemy and -10 or 14)+x,(enemy and 6 or -70)+y)
@@ -21,6 +24,7 @@ function M.ambient(now,t)
   place(PI,false,0,-math.floor(2+2*math.sin(now/300)))
 end
 function M.busy() return pat~=nil end
+function M.impact() return not pat or badge.sys.ms()-t0>=delay end
 function M.idle(t) idle=color[TP[t]] or idle lights(idle,180) end
 function M.reset()
   pat=nil place(EI,true,0,0) place(PI,false,0,0)
@@ -28,33 +32,39 @@ function M.reset()
   for i=1,4 do pool[i]:hidden(true) end
 end
 function M.start(p,side)
-  delay=string.sub(p,-1)=="L" and 900 or 0
+  delay=string.sub(p,-1)=="L" and 1500 or 0
   pat=delay>0 and string.sub(p,1,-2) or p
   target,t0,c=side=="en",badge.sys.ms(),color[pat]
-  duration=delay+650
+  duration=delay>0 and 3200 or 650
+  for i=1,4 do
+    style.bg_color=i%2==0 and c or 0xffffff
+    style.radius=(pat=="par" or pat=="elec") and 0 or 3
+    pool[i]:style(style)
+  end
 end
 function M.tick(now)
   if not pat then return end
   local t=now-t0
   if t>=duration then M.reset() lights(idle,180) return end
-  -- Six LEDs pulse with the move's element; longer moves charge before impact.
-  lights(c,80+math.floor(150*math.abs(math.sin(t/130))))
+  -- Original clockwise charge: indices 1..6 trace the physical badge perimeter.
+  if t<delay or pat=="win" or pat=="appear" then
+    badge.led.clear() local i=(t//80)%6+1
+    light(i,c,255) light((i+4)%6+1,c,60) badge.led.show()
+  else lights(c,delay>0 and 255 or 80+math.floor(150*math.abs(math.sin(t/130)))) end
   local h=t-delay
+  local hit=pat=="hit" or pat=="fire"
   local tw=target and EI or PI
   local attacker=target and PI or EI
-  local shift=h>=0 and h<100 and 10 or 0
+  local shift=hit and h>=0 and h<100 and 10 or 0
   place(attacker,not target,target and shift or -shift,0)
-  place(tw,target,h>=100 and h<350 and (h//50%2==0 and 4 or -4) or 0,0)
-  tw:hidden(h>=0 and h<350 and h//70%2==1)
+  place(tw,target,hit and h>=100 and h<350 and (h//50%2==0 and 4 or -4) or 0,0)
+  tw:hidden(hit and h>=0 and h<350 and h//70%2==1)
   for i=1,4 do
     local p=pool[i]
-    local active=h>=0 and h<500
+    local active=(hit or delay>0) and h>=0 and h<500
     if active then
       local x=(i*11+h//40)%32
       local y=32-(h//9+i*7)%32
-      style.bg_color=i%2==0 and c or 0xffffff
-      style.radius=pat=="elec" and 0 or 3
-      p:style(style)
       p:align(target and "top_right" or "bottom_left",target and -44+x or 14+x,target and 6+y or -104+y)
     end
     p:hidden(not active)
