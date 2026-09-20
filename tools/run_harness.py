@@ -13,7 +13,7 @@ HARNESS = (ROOT / 'tools/harness.lua').read_bytes()
 def check_installed_size(files):
     header, body = (ROOT / 'dist/hackamon.lua').read_bytes().split(b']==]\n', 1)
     text = [header.split(b'\n', 1)[1], body]
-    text.extend((ROOT / 'dist' / name).read_bytes() for name in ('battle.lua', 'fx.lua', 'screens.lua', 'gen.lua'))
+    text.extend((ROOT / 'dist' / name).read_bytes() for name in ('game.lua', 'battle.lua', 'fx.lua', 'screens.lua', 'gen.lua'))
     total = sum(len(s.replace(b'\n', b'\r\n')) for s in text) + sum(map(len, files.values())) + 5304
     assert total <= 36 * 1024, f'Actual installed bundle over budget: {total}'
     assert len(text) + len(files) + 1 <= 16
@@ -54,6 +54,6 @@ for engine in (lua54, lua55):
         run(engine, directory, 'recovery', partial)
         for failure in ('write_error', 'marker_error', 'silent_marker', 'silent_append'):
             run(engine, directory, failure)
-        for failure in ('title_error', 'battle_error', 'fx_error', 'home_error', 'loading_exit'):
+        for failure in ('title_error', 'game_error', 'battle_error', 'fx_error', 'home_error', 'loading_exit'):
             run(engine, directory, failure, files)
-print('All 88 scenarios passed.')
+print('All 92 scenarios passed.')

@@ -2,15 +2,16 @@
 -- opaque RGB565 with the cream background baked in (3,212 bytes each).
 -- Batch eight output rows per write: at most 652 bytes including the header.
 -- The completion marker travels with Share; private store flags do not.
+-- Run-length art: a number repeats the following pixel letter (or background dot).
 SPR={
  {{k=0x202020,a=0xf8d030,b=0xc89820,r=0xe04040,w=0xffffff},
-  ".kk..............kk..kkk............kkk..kkak..........kakk...kaak........kaak....kaaak......kaaak.....kaakkkkkkkkaak......kaaaaaaaaaaaak.....kaaaaaaaaaaaaaak....kaakwaaaaaakwaak....kaakkaaaaaakkaak....kaaaaaakkaaaaaak...krraaaakaaaakaaarrk.krraaaaakaakaaaarrk..kaaaaaaakkaaaaakkk..kaaaaaaaaaaaaakaak.kaaakaaaaaaaakaaaak.kaaaakaaaaaakaaaak..kbbaaaaaaaaaaaabbk...kkbaaakaakaaabkk......kkkkkkkkkkkkk..."}, -- Pikachu
+  ".kk14.kk..3k12.3k..kkak10.kakk3.kaak8.kaak4.k3ak6.k3ak5.kaa8kaak6.k12ak5.k14ak4.kaakw6akwaak4.kaakk6akkaak4.k6akk6ak3.krr4ak4ak3arrk.krr5akaak4arrk..k7akk5a3k..k13akaak.k3ak8ak4ak.k4ak6ak4ak..kbb12abbk3.kkb3akaak3abkk6.13k3."}, -- Pikachu
  {{k=0x202020,a=0xf08838,b=0xc05820,c=0xf8e0a0,f=0xf8d838,g=0xf05028,w=0xffffff},
-  "......kkkkk..............kaaaaak............kaaaaaaak...........kawkaawkk...........kakkaakkk...........kaaaaaaak............kaakaak..............kkkkk..............kaaaaak..kk........kaakcckaak.kk......kaaakccckaak.kf.....kaaakccckaak.kgk....kaaakccckaaakkfgk...kaakkccckbaaakffk....kakccckbbaaaakk.....kaakkkbbaaaaak.....kbaaaaaabkkkkk.....kbbkaaaaakbbk.......kbkkkaaakkkbk.......kkk.kkkkk..kk....."}, -- Charmander
+  "6.5k14.k5ak12.k7ak11.kawkaawkk11.kakkaa3k11.k7ak12.kaakaak14.5k14.k5ak..kk8.kaakcckaak.kk6.k3ak3ckaak.kf5.k3ak3ckaak.kgk4.k3ak3ck3akkfgk3.kaakk3ckb3akffk4.kak3ckbb4akk5.kaa3kbb5ak5.kb6ab5k5.kbbk5akbbk7.kb3k3a3kbk7.3k.5k..kk5."}, -- Charmander
  {{k=0x202020,a=0x70b0e8,b=0x3878b8,c=0xd09848,d=0x886030,e=0xf0d8a0,w=0xffffff},
-  ".....kkkkkk.............kaaaaaak...........kaaaaaaaak..........kaawkaaawk..........kaakkaaakk..........kaaaaaaaak...........kaakaaak............kkaaaaakkkk........kbbkkkkkcccdk......kbbbkeeekccccdk.....kbbbkeeeekccccdk....kbbbkeeeekcccdck.....kbkkeeeekccddk.......kkeeeeekdddk.......kbbkeeekkkkk.......kbbbkkkkkbbbk.......kbbbk...kbbbk.......kbbbk...kbbbk........kkk.....kkk.........................."}, -- Squirtle
+  "5.6k13.k6ak11.k8ak10.kaawk3awk10.kaakk3akk10.k8ak11.kaak3ak12.kk5a4k8.kbb5k3cdk6.k3bk3ek4cdk5.k3bk4ek4cdk4.k3bk4ek3cdck5.kbkk4ekccddk7.kk5ek3dk7.kbbk3e5k7.k3b5k3bk7.k3bk3.k3bk7.k3bk3.k3bk8.3k5.3k26."}, -- Squirtle
  {{k=0x202020,a=0x60c8a8,b=0x309878,c=0x80d860,d=0x40a040,r=0xd03030,w=0xffffff},
-  "..........kkkkkk............kkcccccdk..........kcccddcccdk........kccdccccdcck.......kkcdccccccddk......kaakkcddccddk......kaaaaakkkkkkk......kaaaaaaaaaaaak.....kaarkaaaaaakraak....kaakkaaaaaakkaak....kaaaaaaaaaaaaaaak...kakaaaakbbaaakaak...kaakkkkaaaaaaaaak...kbaaaaaabaaaabaak....kaaaakkaaaaakbbk....kaaaak.kaaaak.kk....kbbbk..kbbbbk.......kbbbk..kbbbbk........kkk....kkkk.........................."}, -- Bulbasaur
+  "10.6k12.kk5cdk10.k3cdd3cdk8.kccd4cdcck7.kkcd6cddk6.kaakkcddccddk6.k5a7k6.k12ak5.kaark6akraak4.kaakk6akkaak4.k15ak3.kak4akbb3akaak3.kaa4k9ak3.kb6ab4abaak4.k4akk5akbbk4.k4ak.k4ak.kk4.k3bk..k4bk7.k3bk..k4bk8.3k4.4k26."}, -- Bulbasaur
 }
 
 local job=-10
@@ -42,6 +43,8 @@ GEN=function()
   local pal,art=SPR[id][1],SPR[id][2]
   local batch,row={},{}
   if part==0 then
+    art=string.gsub(art,"(%d+)(.)",function(n,c) return string.rep(c,tonumber(n)) end)
+    SPR[id][2]=art
     for k,c in pairs(pal) do local p=px(c) pal[k]=p..p end
     local p=px(0xf8f8f0) pal["."]=p..p
     batch[1]=string.char(0x19,0x12,0,0,40,0,40,0,80,0,0,0)

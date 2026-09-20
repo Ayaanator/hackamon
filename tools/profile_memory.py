@@ -19,7 +19,11 @@ def profile(directory, revision=None):
     glob = rt.globals()
     directory = Path(directory).resolve()
     sources = {}
-    for name in ('hackamon.lua', 'screens.lua', 'fx.lua', 'battle.lua', 'gen.lua'):
+    names = (subprocess.check_output(['git', 'ls-tree', '--name-only', f'{revision}:dist'], cwd=ROOT).decode().splitlines()
+             if revision else [p.name for p in directory.glob('*.lua')])
+    for name in names:
+        if not name.endswith('.lua'):
+            continue
         sources[(directory / name).as_posix().encode()] = (
             subprocess.check_output(['git', 'show', f'{revision}:dist/{name}'], cwd=ROOT)
             if revision else (directory / name).read_bytes()

@@ -7,31 +7,10 @@ heap_kb=96
 wake_lock=1
 home_button=1
 ]==]
--- HACKAMON. Start with PIKACHU. Scan stickers PKM01 (Charmander), PKM02 (Squirtle),
--- PKM03 (Bulbasaur) to battle wild Pokemon; win to add them to your team. If one of
--- yours faints you lose the whole team. UP/DOWN cursor, A select / next line, B back / run.
--- HOME returns to the home screen from anywhere; EXIT on the home menu leaves the game.
--- Generate opaque sprites before creating the UI. Release title resources before
--- loading battle/effects, one module per tick. Buttons never compile modules.
--- Shared game state lives in globals so battle.lua can see it.
-local scan
--- Fixed level 15, neutral nature, zero IV/EV: name, HP, type, two moves, effect,
--- Attack, Defense, Sp. Attack, Sp. Defense, Speed. Basic moves are Normal/40.
-P={
- {"PIKACHU",35,4,"QUICK ATTACK","THUNDER WAVE","par",21,17,20,20,32},
- {"CHARMANDER",36,1,"SCRATCH","EMBER","burn",20,17,23,20,24},
- {"SQUIRTLE",38,2,"TACKLE","WITHDRAW","def",19,24,20,24,17},
- {"BULBASAUR",38,3,"TACKLE","LEECH SEED","seed",19,19,24,24,18},
-}
-BIT,TP={1,2,4,8},{"fire","water","grass","elec"}
-S,cur,act,owned=0,1,1,1
-me,en,team={},{},{}
-local nfc,nxt,frame=false,0,0
-local HM={"SCAN","SWITCH LEAD","EXIT"}
-local count=0
-local q,qi,after,pending={},0,nil,false
-local R,EN,EB,EH,PN,PB,PH,MSG,MENU,CUE,BG,TMP
-
+-- Small entry chunk: gameplay is not compiled until the title is gone.
+BIT={1,2,4,8}
+S,act,owned=13,1,1
+local TMP,nxt,frame=nil,0,0
 function own(i) return (owned//BIT[i])%2==1 end
 local function gc() collectgarbage("collect") end
 local function gcset(p)
@@ -48,64 +27,7 @@ function log(t)
   badge.sys.log(t.." lua="..s.lua_used.." peak="..s.lua_peak.." free="..s.free_heap.." widgets="..s.widgets)
 end
 
-local function bar(b,h,m)
-  b:set_range(0,m) b:set_value(h)
-  b:style({bg_color=h*4<=m and 0xe03030 or (h*2<=m and 0xe8b020 or 0x30c030)},"indicator")
-end
-local function bars(n,mh,mm,eh)
-  PN:set_text(n) PH:set_text(mh.."/ "..mm) bar(PB,mh,mm)
-  if en.id then EN:set_text(P[en.id][1]) EH:set_text(eh.."/ "..en.max) bar(EB,eh,en.max) end
-end
--- A menu shares the box: prompt on the left, choices in a wider column on the right.
-function menu(t)
-  count=#t MSG:set_size(104,58) MENU:set_text(table.concat(t,"\n"))
-  CUE:set_text(">") cursor(0) CUE:hidden(false)
-end
-function cursor(dir) cur=(cur-1+dir)%count+1 CUE:align("top_left",118,3+(cur-1)*19) end
-function side(i,e)
-  return {id=i,hp=P[i][2],max=P[i][2],burn=0,seed=0,def=0,par=0,name=(e and "Enemy " or "")..P[i][1]}
-end
 function save() badge.store.set_int("act",act) badge.store.set_int("owned",owned) end
-
--- Dialogue queue. Each line snapshots HP so bars move with the text; f = side hit, p = fx pattern.
-function push(m,f,p) q[#q+1]={m,P[me.id][1],me.hp,me.max,en.id and en.hp or 0,f,p} end
-local function advance()
-  if qi<#q then
-    qi=qi+1 local e=q[qi]
-    MSG:set_text(e[1])
-    if e[7] then FX.start(e[7],e[6]) end
-    pending=not FX.impact()
-    if not pending then bars(e[2],e[3],e[4],e[5]) end
-    return
-  end
-  q,qi={},0 CUE:hidden(true) local f=after after=nil if f then f() end
-end
--- Dialogue lines get the whole box.
-function say(f)
-  after=f S=4 MENU:set_text("") MSG:set_size(272,58)
-  CUE:set_text("v") CUE:align("bottom_right",-6,-1) CUE:hidden(true) advance()
-end
-
-function home()
-  q,qi,after={},0,nil team={}
-  S=13 cur=1 en={} me=side(act) badge.sys.gc_step()
-  if FX then FX.reset() end
-  local n=0 for i=1,4 do if own(i) then n=n+1 end end
-  BG:style({bg_color=0xf8f8f0}) PI:hidden(false) EB:hidden(true) EI:hidden(true) PB:hidden(false)
-  EN:style({text_font=16,text_color=0x101010}) EN:set_text("Team "..n.."/4")
-  EH:style({text_color=0x101010}) EH:set_text("")
-  PI:set_src(spr(act,true)) bars(P[act][1],me.hp,me.max,0)
-  MSG:set_text("What will you\ndo?") menu(HM)
-  log("home") S=0
-end
-scan=function(on)
-  if on then
-    PI:align("bottom_left",14,-70)
-    CUE:hidden(true) MSG:set_size(118,58) nfc=badge.nfc.enable()
-    if nfc then badge.nfc.clear() S=2 MSG:set_text("Scanning...\nHold a sticker\nto the badge.") MENU:set_text("B stop")
-    else CUE:hidden(false) MSG:set_text("NFC reader\nunavailable.") end
-  elseif nfc then badge.nfc.disable() nfc=false end
-end
 -- Schedule screen compilation separately from the last sprite write and UI creation.
 local function start()
   S,valid=11,nil
@@ -113,7 +35,7 @@ local function start()
 end
 
 function on_enter(root)
-  R=root UI_ROOT=root gc()
+  UI_ROOT=root gc()
   -- Default GC waits for memory to double before finishing a cycle; with this much live
   -- code and this little spare RAM that never happens. Collect continuously instead.
   gcset(100)
@@ -135,90 +57,34 @@ end
 
 function on_tick()
   local now=badge.sys.ms()
-  -- Leave setup suspended after an error; HOME can exit even with a partial UI.
   if S==13 then return end
   if S==11 then
     S=13 require("screens") S=12 gc() log("screens compiled")
-    return
-  end
-  if S==12 then
+  elseif S==12 then
     S=13
-    if BUILD() then
-      BUILD=nil
-      EN,EB,EH,PN,PB,PH,MSG,MENU,CUE,BG=W.EN,W.EB,W.EH,W.PN,W.PB,W.PH,W.MSG,W.MENU,W.CUE,W.BG
-      S=7 gc() log("screens ready")
-    else S=12 end
-    return
-  end
-  if S==6 then
-    S=13
-    if not BT then require("battle") gc() log("battle loaded")
-    elseif not FX then FX=require("fx") gc() log("fx loaded")
-    elseif FX.init(R) then home() return end
-    S=6
-    return
-  end
-  if S==9 then
-    if (now//150)%2==0 then badge.led.set_all(0,30,120) else badge.led.set_all(0,10,40) end badge.led.show()
+    if BUILD() then BUILD=nil S=7 gc() log("screens ready") else S=12 end
+  elseif S==6 then
+    S=13 require("game") S=6
+  elseif S==9 then
+    badge.led.set_all(0,30,120) badge.led.show()
     S=13 local done,id=GEN() S=9
     if id then TMP:set_text("Preparing sprite "..id.."/4") end
-    if done then S=11 GEN=nil SPR=nil gc() log("sprites ready in "..(badge.sys.ms()-nxt).."ms") start() end
-    return
-  end
-  if now<frame then return end
-  frame=now+33 badge.sys.gc_step()
-  if TITLE then
+    if done then GEN=nil SPR=nil gc() log("sprites ready in "..(now-nxt).."ms") start() end
+  elseif now>=frame then
+    frame=now+33
     local state=S S=13
     if TITLE.tick(now) then
       TITLE=nil gc() log("title dropped")
-      MSG:set_text("Getting ready...") MENU:set_text("") S=6
+      W.MSG:set_text("Getting ready...") W.MENU:set_text("") S=6
     else S=state end
-    return
   end
-  if S==0 then FX.ambient(now,P[act][3]) return end
-  if FX then FX.tick(now) end
-  if S==4 then
-    if pending and FX.impact() then
-      pending=false local e=q[qi] bars(e[2],e[3],e[4],e[5])
-    end
-    CUE:hidden(FX.busy() or (now//400)%2==1)
-  end
-  if S~=2 or not nfc or now<nxt then return end
-  nxt=now+300
-  if not badge.nfc.card() then return end
-  local t=badge.nfc.read_text() badge.nfc.clear()
-  local m=string.match(t or "","^PKM(%d+)$")
-  local i=m and tonumber(m)+1
-  if i and i>=2 and i<=4 then scan(false) BT.encounter(i) else MSG:set_text("That is not a\nPokemon sticker.") end
 end
-
 function on_button(b,k)
-  local I=badge.input.BUTTON
-  -- HOME is delivered to us (home_button=1); its Released is the reliable edge.
-  if b==I.HOME then
-    if k==badge.input.KIND.RELEASED then
-      if S>=6 or TITLE then badge.app.exit() else scan(false) home() end
-    end
-    return
-  end
-  if k~=badge.input.KIND.PRESSED then return end
-  local up,dn,A,B=b==I.UP,b==I.DOWN,b==I.A,b==I.B
-  if S==0 then
-    if up or dn then cursor(up and -1 or 1)
-    elseif A and cur==1 then scan(true)
-    elseif A and cur==3 then badge.app.exit()
-    elseif A then for _=1,4 do act=act%4+1 if own(act) then break end end save() home() end
-  elseif S==2 then
-    if B then scan(false) home() end
-  elseif S==3 or S==5 then BT.button(up,dn,A,B)
-  elseif S==7 then
-    if A then S=8 TITLE.go() end
-  elseif S==4 and A and not FX.busy() then advance() end
+  if b==badge.input.BUTTON.HOME and k==badge.input.KIND.RELEASED then badge.app.exit()
+  elseif S==7 and b==badge.input.BUTTON.A and k==badge.input.KIND.PRESSED then S=8 TITLE.go() end
 end
-
 function on_exit()
   save() badge.led.clear() badge.led.show()
-  if nfc then badge.nfc.disable() end
   if EI then EI:delete() end
   if PI then PI:delete() end
 end

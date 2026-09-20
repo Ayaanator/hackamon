@@ -3,7 +3,7 @@
 A Pokemon-style game for the Hack the North 2026 hacker badge. Scan NFC stickers to
 meet wild Pokemon, battle them Game Boy style, and build your team.
 
-Five small Lua files, installed through the
+Six small Lua files, installed through the
 [badge IDE](https://badge.hackthenorth.com/ide/).
 
 ## Pokemon
@@ -70,13 +70,14 @@ phone app. Uppercase, no spaces.
 
 ## Install / upgrade
 
-Use all **five files in [dist/](dist/)**. No build tools are needed to install them.
+Use all **six files in [dist/](dist/)**. No build tools are needed to install them.
+`game.lua` is new: separating gameplay from the entry file reduces launch memory.
 
 1. Save your current IDE work. In the [badge IDE](https://badge.hackthenorth.com/ide/),
    **Import app** using `dist/hackamon.lua`, then **Replace editor files**. The importer
    creates `manifest.cfg` and `main.lua`. Keep the slug `hackamon` to retain your save.
-2. Add `battle.lua`, `fx.lua`, `screens.lua`, and `gen.lua` with **+**, using the
-   matching `dist/` contents and these exact filenames. Replace all five together.
+2. Add `game.lua`, `battle.lua`, `fx.lua`, `screens.lua`, and `gen.lua` with **+**, using
+   the matching `dist/` contents and these exact filenames. Replace all six together.
 3. You may keep or add the launcher image icon. This build budgets for its full 5,304 bytes.
 4. **Connect > Push > Reboot**, then open Hackamon once and let preparation finish.
    The upgrade removes the eight old `s*.bin` / `m*.bin` generated sprites and old
@@ -86,7 +87,7 @@ Use all **five files in [dist/](dist/)**. No build tools are needed to install t
 5. A starts the game. The short preparation/loading stages ignore gameplay buttons.
 
 If Import app is absent, copy the header's `key=value` lines to `manifest.cfg` and
-all code after `]==]` to `main.lua`, then add the four modules.
+all code after `]==]` to `main.lua`, then add the five modules.
 
 Do not upload repository source, tests or tooling. Unknown extra files left by other
 versions are not included in the budget; inspect those individually if the device's
@@ -99,13 +100,14 @@ The complete installed app, **after generation**, includes code, manifest, four
 
 | Configuration | Installed bytes | Files |
 | --- | ---: | ---: |
-| Text files with LF, with icon | 36,821 | 12 |
-| Text files with CRLF, with icon | **36,860** | **12** |
-| Text files with CRLF, without icon | 31,556 | 11 |
+| Text files with LF, with icon | 36,532 | 13 |
+| Text files with CRLF, with icon | **36,572** | **13** |
+| CRLF with icon, import header also retained in main.lua | 36,682 | 13 |
+| Text files with CRLF, without icon | 31,268 | 12 |
 
-This leaves **12,292 bytes** under the firmware's 49,152-byte sharing limit even
+This leaves **12,580 bytes** under the firmware's 49,152-byte sharing limit even
 with the image icon and Windows line endings. Our build rejects anything above
-**36 KiB**, rather than just checking that it barely fits 48 KiB. The harness also
+**36 KiB**, including the retained-header variant, rather than barely fitting 48 KiB. The harness also
 counts the actual generated files, independently of the build's expected sizes.
 
 The previous build was 51,931 bytes with the icon and LF. Its dependence on removing
@@ -115,6 +117,10 @@ the icon was insufficient margin. This version reduces that full bundle by about
 
 File size and runtime RAM are separate budgets. This version also reduces RAM:
 
+- A 2,326-byte entry file loads only startup code. Gameplay moves to `game.lua`,
+  compiled after sprite generation, widget construction and title cleanup. Its
+  callbacks replace the startup callbacks; a collection before loading battle
+  code releases the old startup closure. Gameplay does not compile inside buttons.
 - Four shared sprite files instead of eight separate facing files, while retaining
   original 40x40 pixel art. Opaque RGB565 avoids indexed-alpha conversion.
 - A smaller effects implementation, four preallocated particles instead of six,
@@ -125,6 +131,10 @@ File size and runtime RAM are separate budgets. This version also reduces RAM:
 - Initialization functions, sprite renderer/art, screen builder and title functions
   are released when their stage is complete. Screen creation remains one widget
   per tick, separate from sprite writes and module compilation.
+- Run-length encoding reduces the stored pixel descriptions. Only the current
+  sprite's 400-character description is expanded when rendering begins. All four
+  resulting binary sprites are byte-identical to the previous build, so existing
+  valid files and the version-10 marker remain reusable.
 - Each append batches eight output rows (640 bytes; the first write is 652 bytes
   including the header). No complete bitmap is assembled in Lua. The
   completion marker is cleared before regeneration, so interrupted writes are retried
@@ -132,23 +142,29 @@ File size and runtime RAM are separate budgets. This version also reduces RAM:
   with an explicit error; HOME exits safely. Recipients reuse transferred sprites
   without rebuilding them.
 
-A repeatable **64-bit host Lua 5.5** comparison against commit `be431b3` gives:
+A repeatable **64-bit host Lua 5.5** comparison against the reported failing build,
+commit `01cbf93`, gives:
 
 | Phase | Previous live Lua bytes | New live Lua bytes |
 | --- | ---: | ---: |
-| Title | 33,586 | 31,261 |
-| Home after loading gameplay | 56,610 | 50,713 |
-| Battle | 56,863 | 51,030 |
-| Attack | 58,228 | 51,866 |
+| Main loaded | 26,345 | 9,616 |
+| Title | 31,261 | 10,682 |
+| Home after loading gameplay | 50,713 | 48,449 |
+| Battle | 51,030 | 48,766 |
+| Attack | 51,866 | 49,602 |
 
 These are post-GC live game allocations above the same mock-runtime baseline,
-with flash contents held outside Lua. The attack measurement is about **11% lower**.
-The corrected mechanics, restored chase and startup fix add 3,540 live Lua bytes during this
-attack compared with the immediately preceding `9e22cdc` build (48,326 bytes).
-They add no widgets. Deployment whitespace compression saves transfer bytes,
+with flash contents held outside Lua. Main is about **63% lower**, title about
+**66% lower**, and the representative attack about **4% lower**. No widgets were added.
+Deployment whitespace compression saves transfer bytes,
 not Lua runtime memory; the source remains readable in the repository root.
 They are **not** total badge RAM, transient peaks, native image/widget memory,
 ESP32 timing, or a claim that every low-memory badge will run the game.
+
+A separate allocator-limited test gives entry-chunk compilation/execution only
+24 KiB above its fixed host harness baseline. The new source and deploy entry
+files pass in Lua 5.4 and 5.5; `01cbf93` fails under the same allowance. This is a
+regression check for the smaller loader, not a measurement of total badge RAM.
 
 The manifest's 96 KiB is a ceiling, not a reservation. It does not consume or supply
 96 KiB automatically. Actual physical-badge capacity still needs verification with
@@ -227,11 +243,11 @@ badge. Firmware versions, available native heap and fragmentation still differ.
   default; enforces the 36 KiB target and 16-file limit. `--without-icon` reports the
   optional smaller variant. Token-preserving whitespace removal and line grouping
   reduce transfer bytes, not runtime RAM. Strings and sprite artwork are preserved.
-- `python tools/run_harness.py` (requires `pip install lupa`): **88 scenarios** across
+- `python tools/run_harness.py` (requires `pip install lupa`): **92 scenarios** across
   Lua 5.4 / 5.5 and source / deployment files. Checks cold and recipient launches,
   missing assets, migration preserving saves/icon, interrupted writes and recovery,
   invalid saves, unavailable NFC, injected setup/storage errors, missing marker
-  read-back, title/loading/home failures, HOME escape, cursor stress tests,
+  read-back, title/game-loading/home failures, HOME escape, cursor stress tests,
   battle/switch/capture/loss,
   repeated encounters, bounded widget creation, pixel format and actual installed size.
   Also checks all six chase positions, one LED latch per frame, the charge delay,
@@ -239,7 +255,10 @@ badge. Firmware versions, available native heap and fragmentation still differ.
 - `python tools/check_battle.py`: deterministic damage, accuracy, status, priority,
   switching, type immunity and stat tests on both Lua versions and source/dist;
   checks whitespace compaction against numeric, quoted and operator edge cases.
-- `python tools/profile_memory.py --compare be431b3`: repeats the live Lua comparison
+- `python tools/check_startup.py`: limits entry-chunk compilation/execution to
+  24 KiB above a fixed host baseline and compares all generated sprite bytes to
+  commit `01cbf93`. The old entry chunk fails that allowance; the new one passes.
+- `python tools/profile_memory.py --compare 01cbf93`: repeats the live Lua comparison
   above using the baseline commit's deployment files and the current `dist/` files.
 
 Host tests do not replace physical-badge memory, display, callback-time, USB or

@@ -8,6 +8,7 @@ badge={sys={random=function(n)
   return value
 end}}
 W={MSG={set_text=function() end},EB={hidden=function() end}}
+assert(loadfile(dir.."/game.lua"))()
 EI={set_src=function() end,hidden=function() end}
 PI=EI
 FX={idle=function() end,reset=function() end}

@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-LUA = ['hackamon.lua', 'battle.lua', 'fx.lua', 'gen.lua', 'screens.lua']
+LUA = ['hackamon.lua', 'game.lua', 'battle.lua', 'fx.lua', 'gen.lua', 'screens.lua']
 
 # Preserve tokens and quoted art/dialogue. No identifier
 # renaming or bytecode: the deploy files remain portable across badge Lua versions.
@@ -70,9 +70,11 @@ def build(with_icon=True):
     total = sum(sizes.values())
     crlf_extra = manifest.count('\n') + body.count('\n') + sum((dist / n).read_text(encoding='utf-8').count('\n') for n in LUA if n != 'hackamon.lua')
     worst = total + crlf_extra
+    retained_header = worst + len((header + ']==]\n').encode('utf-8')) + header.count('\n') + 1
     print(f'{total:6d}  total in {len(sizes)} files (Share cap 49152 bytes, 16 files)')
     print(f'With CRLF line endings: {worst} bytes; margin {49152 - worst} bytes')
-    if worst > 36 * 1024 or len(sizes) > 16:
+    print(f'If main.lua also retains the import header: {retained_header} bytes')
+    if retained_header > 36 * 1024 or len(sizes) > 16:
         raise SystemExit('OVER OUR 36 KiB BUDGET (including icon and CRLF)')
     print(f'cold install {total - 4 * 3212 - 2} bytes')
     return sizes

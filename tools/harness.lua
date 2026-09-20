@@ -118,7 +118,8 @@ require=function(name)
   if modules[name] then return modules[name] end
   if name=="screens" and mode=="screen_error" then error("injected screen load failure") end
   if name=="battle" and mode=="battle_error" then error("injected battle load failure") end
-  if name=="battle" or name=="fx" then assert(TITLE==nil,"title retained while loading gameplay") end
+  if name=="game" and mode=="game_error" then error("injected gameplay load failure") end
+  if name=="battle" or name=="fx" or name=="game" then assert(TITLE==nil,"title retained while loading gameplay") end
   local f=assert(loadfile(DIR.."/"..name..".lua"))
   loading_module=name
   local result=f()
@@ -194,7 +195,7 @@ if mode=="upgrade" then
 end
 ticks(150)                       -- parade
 press(B.A)
-if mode=="title_error" or mode=="battle_error" or mode=="fx_error" or mode=="home_error" then
+if mode=="title_error" or mode=="game_error" or mode=="battle_error" or mode=="fx_error" or mode=="home_error" then
   local ok,err=pcall(function() ticks(40) end)
   assert(not ok and string.find(err,"injected"),"expected transition failure")
   assert(S==13,"failed transition did not enter escape state")
