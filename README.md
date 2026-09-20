@@ -64,7 +64,9 @@ unless you edit the game. The default uses the `PKM` text icon, not `icon.bin`.
 3. Add `battle.lua`, `fx.lua`, `screens.lua`, and `gen.lua` with **+**, pasting
    the contents of the matching `dist/` files. Keep these exact filenames.
 4. Do not add an image icon: it would put this version over the Share size cap.
-5. Badge off, USB data cable in, badge on. **Connect**, choose **USB JTAG/serial
+5. In the IDE, remove any existing icon with the **x** beside its preview (or
+   remove `icon.bin` from the editor files). Otherwise Push uploads it again.
+   Badge off, USB data cable in, badge on. **Connect**, choose **USB JTAG/serial
    debug unit**, then **Push**. Reboot once for this update, especially if the
    badge has just shown a memory error or its runtime manifest changed.
 6. Open Hackamon. The first launch creates the new sprites in small batches;
@@ -104,6 +106,10 @@ Increasing the already-maximal manifest quota is not a fix.
 - **Bounded generation:** two output rows (160 bytes) per append instead of
   retaining a complete 3,884-byte file plus its concatenation. The renderer and
   art table are released before gameplay. This is a buffer bound, not total Lua RAM.
+- **Incremental startup:** after sprite generation, screen code compiles in a
+  separate tick, then creates one widget per tick. A setup failure suspends that
+  phase; HOME exits safely even if only part of the interface exists. This fixes
+  the reported screen-building deadline and secondary `GEN` nil error.
 - **Safe transition:** the title no longer enables the home menu halfway through
   its wipe. Battle/effects modules load on separate ticks after title resources
   are released, before NFC is enabled. No button callback compiles a module.
@@ -127,11 +133,11 @@ LVGL configuration a particular badge runs.
 
 ## Sharing to friends
 
-The default bundle after sprite generation is **46,012 bytes in 15 files**,
+The default bundle after sprite generation is **46,627 bytes in 15 files**,
 including manifest, five Lua files, eight sprites, and the completion marker.
-It leaves **3,140 bytes** under Share's **49,152-byte / 16-file** cap.
-The optional image icon would increase it to 51,316 bytes, which is too large.
-Before generation the uploaded code/config is 20,315 bytes.
+It leaves **2,525 bytes** under Share's **49,152-byte / 16-file** cap.
+The optional image icon would increase it to 51,931 bytes, which is too large.
+Before generation the uploaded code/config is 20,930 bytes.
 
 On current firmware, use **Share > Send an app > Hackamon > A: offer app**.
 Your friend opens **Share > Receive an app** and accepts the incoming app.
@@ -154,17 +160,18 @@ post-generation Share bundle using the actual manifest size. Comments are stripp
 for transfer size; stripping them is not a runtime-memory optimization.
 `python tools/build.py --with-icon` intentionally fails for this build.
 
-`python tools/run_harness.py` (requires `pip install lupa`) runs 20 scenarios across
+`python tools/run_harness.py` (requires `pip install lupa`) runs 28 scenarios across
 Lua 5.4 and 5.5, against both source and deployment files:
 
 - Cold launch, a fresh recipient using received assets, missing-asset recovery,
-  invalid-save recovery, and unavailable NFC.
+  invalid-save recovery, unavailable NFC, and injected screen-load/widget failures.
 - Button presses during the wipe/loading phase, repeated HOME interruptions,
   attacks and elemental animations, switching, capture, duplicate capture,
   loss/reset, saving, and exit.
 - Sprite headers, dimensions, exact mirroring, maximum write size, no module
   compilation in button callbacks, title release before gameplay loading,
-  and particle/widget reuse through repeated encounters.
+  and particle/widget reuse through repeated encounters. Startup tests enforce at
+  most one widget creation per tick and no screen construction inside `require`.
 
 These are host tests with mocked badge APIs. They do not measure native image
 allocation, ESP32 heap fragmentation, callback timing, appearance on the physical

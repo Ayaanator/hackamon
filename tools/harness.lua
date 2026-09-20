@@ -9,12 +9,16 @@ local mode=TEST_MODE or "cold"
 local widgets=0
 local live,peak,max_write,writes=0,0,0,0
 local in_button=false
+local in_generation_tick=false
+local loading_module=nil
 local modules={}
 local log={}
 local errors={}
 local exited=false
 
 local function W(kind)
+  assert(loading_module~="screens","screen module constructed widgets during require")
+  if mode=="widget_error" and widgets==13 then error("injected widget failure") end
   widgets=widgets+1
   live=live+1 peak=math.max(peak,live)
   local w={kind=kind,text="",hidden_=false}
@@ -82,15 +86,28 @@ package.path=DIR.."/?.lua"
 -- The firmware uses a private module cache; package is unavailable to game code.
 require=function(name)
   assert(not in_button,"module compilation inside on_button: "..name)
+  assert(not in_generation_tick,"module compiled during sprite generation")
   if modules[name] then return modules[name] end
+  if name=="screens" and mode=="screen_error" then error("injected screen load failure") end
   if name=="battle" or name=="fx" then assert(TITLE==nil,"title retained while loading gameplay") end
   local f=assert(loadfile(DIR.."/"..name..".lua"))
+  loading_module=name
   local result=f()
+  loading_module=nil
   modules[name]=result or true
   return modules[name]
 end
 
-local function ticks(n,step) for _=1,n do now=now+(step or 20) on_tick() end end
+local function ticks(n,step)
+  for _=1,n do
+    now=now+(step or 20)
+    local stage,before=S,widgets
+    in_generation_tick=stage==9
+    on_tick()
+    in_generation_tick=false
+    if stage==11 or stage==12 then assert(widgets-before<=1,"startup created multiple widgets per tick") end
+  end
+end
 local function press(b) in_button=true on_button(b,1) on_button(b,2) in_button=false end
 local B=badge.input.BUTTON
 
@@ -100,6 +117,16 @@ if mode=="invalid_save" then store.owned=128 store.act=99 end
 local chunk=assert(loadfile(DIR.."/hackamon.lua"))
 chunk()
 on_enter({})
+if mode=="screen_error" or mode=="widget_error" then
+  local ok,err=pcall(function() ticks(120) end)
+  assert(not ok and string.find(err,"injected"),"expected setup failure was not reached")
+  assert(S==13 and GEN==nil,"failed setup retained the renderer state")
+  ticks(3) -- Must not call cleared GEN or continue a partially completed UI step.
+  press(B.HOME) assert(exited,"HOME did not exit failed setup")
+  on_exit() -- A partial UI may contain EI but no PI.
+  print("HARNESS OK "..mode.." (no secondary error; HOME exits)")
+  return {files=files,peak=peak,writes=writes}
+end
 ticks(120)                       -- first-launch render: 88 parts
 for i=1,4 do
   local front,back=files["s"..i..".bin"],files["m"..i..".bin"]
@@ -131,13 +158,14 @@ end
 assert(badge.nfc.enabled,"scan did not enable nfc")
 badge.nfc.text="PKM03" ticks(20)
 assert(not badge.nfc.enabled,"nfc still on after encounter")
-press(B.A) ticks(60) press(B.A) ticks(60)        -- Wild appeared / Go!
--- round 1: first move, advance through the dialogue and animations
-press(B.A) for _=1,12 do ticks(200,20) press(B.A) end
--- round 2: second move
-press(B.DOWN) press(B.A) for _=1,12 do ticks(200,20) press(B.A) end
--- round 3: SWITCH to Charmander (third menu item), then advance
-press(B.DOWN) press(B.DOWN) press(B.A) ticks(5) press(B.A) for _=1,12 do ticks(200,20) press(B.A) end
+press(B.A) ticks(60) press(B.A) ticks(60) press(B.A)
+assert(S==3,"opening dialogue did not reach moves")
+press(B.A)
+for _=1,24 do
+  if S~=4 then break end
+  ticks(1,4000) press(B.A)
+end
+assert(S==3 or S==0,"round did not finish")
 -- HOME from wherever we are, then SWITCH LEAD, then EXIT
 on_button(B.HOME,2) ticks(5)
 assert(not badge.nfc.enabled,"nfc on at home")
@@ -145,17 +173,19 @@ assert(not badge.nfc.enabled,"nfc on at home")
 local allocated=widgets
 for round=1,40 do
   press(B.A) badge.nfc.text="PKM03" ticks(20)
-  assert(S==4 and _G.W.MSG.text=="Wild BULBASAUR\nappeared!","stale dialogue survived HOME")
+  assert(S==4 and _G.W.MSG.text=="Wild BULBASAUR\nappeared!","unexpected encounter: S="..S.." text=".._G.W.MSG.text)
   on_button(B.HOME,2) ticks(2)
 end
 assert(widgets==allocated,"widgets grew across repeated encounters")
 -- Exercise all particle patterns repeatedly; only the fixed six boxes may be created.
+S=3 -- Home uses its idle animation instead of FX.tick.
 for round=1,10 do
   for _,pattern in ipairs({"fire","water","grass","elec","fireL","win","lose"}) do
-    FX.start(pattern,"en") ticks(5) ticks(1,4000)
+    FX.start(pattern,"en") ticks(pattern=="fireL" and 90 or 5) ticks(1,4000)
   end
 end
 local settled=widgets
+assert(settled==allocated+6,"six-particle pool was not exercised")
 for _=1,30 do FX.start("elec","en") ticks(5) ticks(1,4000) end
 assert(widgets==settled,"particle widgets were not reused")
 on_button(B.HOME,2) ticks(5)

@@ -110,13 +110,10 @@ scan=function(on)
     else MSG:set_text("NFC reader\nunavailable.") end
   elseif nfc then badge.nfc.disable() nfc=false end
 end
--- screens.lua builds the widgets and the sprite images (the files exist by now) and
--- starts the title.
+-- Schedule screen compilation separately from the last sprite write and UI creation.
 local function start()
+  S=11
   if TMP then TMP:delete() TMP=nil end
-  require("screens") gc()
-  EN,EB,EH,PN,PB,PH,MSG,MENU,CUE,BG=W.EN,W.EB,W.EH,W.PN,W.PB,W.PH,W.MSG,W.MENU,W.CUE,W.BG
-  log("screens loaded")
 end
 
 function on_enter(root)
@@ -140,6 +137,21 @@ end
 
 function on_tick()
   local now=badge.sys.ms()
+  -- Leave setup suspended after an error; HOME can exit even with a partial UI.
+  if S==13 then return end
+  if S==11 then
+    S=13 require("screens") S=12 gc() log("screens compiled")
+    return
+  end
+  if S==12 then
+    S=13
+    if BUILD() then
+      BUILD=nil
+      EN,EB,EH,PN,PB,PH,MSG,MENU,CUE,BG=W.EN,W.EB,W.EH,W.PN,W.PB,W.PH,W.MSG,W.MENU,W.CUE,W.BG
+      S=7 gc() log("screens ready")
+    else S=12 end
+    return
+  end
   if S==10 then if now>=nxt then badge.app.exit() end return end
   if S==6 then
     if not BT then require("battle") gc() log("battle loaded")
@@ -149,7 +161,7 @@ function on_tick()
   end
   if S==9 then
     if (now//150)%2==0 then badge.led.set_all(0,30,120) else badge.led.set_all(0,10,40) end badge.led.show()
-    if GEN() then GEN=nil SPR=nil gc() log("renderer dropped") start() end
+    if GEN() then S=11 GEN=nil SPR=nil gc() log("renderer dropped") start() end
     return
   end
   if now<frame then return end
@@ -175,6 +187,7 @@ function on_button(b,k)
   local I=badge.input.BUTTON
   -- HOME is delivered to us (home_button=1); its Released is the reliable edge.
   if b==I.HOME then
+    if k==badge.input.KIND.RELEASED and S>=11 then badge.app.exit() return end
     if k==badge.input.KIND.RELEASED and S~=6 and S~=8 and S~=9 and S~=10 then
       if S==7 then badge.app.exit() else scan(false) home() end
     end
@@ -199,5 +212,6 @@ end
 function on_exit()
   save() badge.led.clear() badge.led.show()
   if nfc then badge.nfc.disable() end
-  if EI then EI:delete() PI:delete() end
+  if EI then EI:delete() end
+  if PI then PI:delete() end
 end

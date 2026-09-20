@@ -29,4 +29,6 @@ for engine in (lua54, lua55):
         run(engine, directory, 'missing', damaged)
         run(engine, directory, 'invalid_save', files)
         run(engine, directory, 'no_nfc', files)
-print('All 20 scenarios passed.')
+        run(engine, directory, 'screen_error')
+        run(engine, directory, 'widget_error')
+print('All 28 scenarios passed.')
