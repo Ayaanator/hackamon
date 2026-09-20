@@ -49,4 +49,6 @@ for engine in (lua54, lua55):
         run(engine, directory, 'recovery', partial)
         for failure in ('write_error', 'marker_error', 'silent_marker'):
             run(engine, directory, failure)
-print('All 52 scenarios passed.')
+        for failure in ('title_error', 'battle_error', 'fx_error', 'home_error', 'loading_exit'):
+            run(engine, directory, failure, files)
+print('All 72 scenarios passed.')

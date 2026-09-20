@@ -27,6 +27,7 @@ S,cur,act,owned=0,1,1,1
 me,en,team={},{},{}
 local nfc,nxt,frame=false,0,0
 local HM={"SCAN","SWITCH LEAD","EXIT"}
+local count=0
 local q,qi,after={},0,nil
 local R,EN,EB,EH,PN,PB,PH,MSG,MENU,CUE,BG,TMP
 
@@ -53,11 +54,10 @@ local function bars(n,mh,mm,eh)
 end
 -- A menu shares the box: prompt on the left, choices in a wider column on the right.
 function menu(t)
-  MSG:set_size(118,58) CUE:hidden(true)
-  local s=""
-  for i=1,#t do s=s..(i==cur and "> " or "  ")..t[i].."\n" end
-  MENU:set_text(s)
+  count=#t MSG:set_size(104,58) MENU:set_text(table.concat(t,"\n"))
+  CUE:set_text(">") cursor(0) CUE:hidden(false)
 end
+function cursor(dir) cur=(cur-1+dir)%count+1 CUE:align("top_left",118,3+(cur-1)*19) end
 function side(i,e)
   return {id=i,hp=P[i][2],max=P[i][2],burn=0,seed=0,def=0,par=0,name=(e and "Enemy " or "")..P[i][1]}
 end
@@ -75,11 +75,14 @@ local function advance()
   q,qi={},0 CUE:hidden(true) local f=after after=nil if f then f() end
 end
 -- Dialogue lines get the whole box.
-function say(f) after=f S=4 MENU:set_text("") MSG:set_size(272,58) advance() end
+function say(f)
+  after=f S=4 MENU:set_text("") MSG:set_size(272,58)
+  CUE:set_text("v") CUE:align("bottom_right",-6,-1) CUE:hidden(true) advance()
+end
 
 function home()
   q,qi,after={},0,nil team={}
-  S=0 cur=1 en={} me=side(act) gc()
+  S=13 cur=1 en={} me=side(act) badge.sys.gc_step()
   if FX then FX.reset() end
   local n=0 for i=1,4 do if own(i) then n=n+1 end end
   BG:style({bg_color=0xf8f8f0}) PI:hidden(false) EB:hidden(true) EI:hidden(true) PB:hidden(false)
@@ -87,14 +90,14 @@ function home()
   EH:style({text_color=0x101010}) EH:set_text("")
   PI:set_src(spr(act,true)) bars(P[act][1],me.hp,me.max,0)
   MSG:set_text("What will you\ndo?") menu(HM)
-  log("home")
+  log("home") S=0
 end
 scan=function(on)
   if on then
     PI:align("bottom_left",14,-70)
-    nfc=badge.nfc.enable()
+    CUE:hidden(true) MSG:set_size(118,58) nfc=badge.nfc.enable()
     if nfc then badge.nfc.clear() S=2 MSG:set_text("Scanning...\nHold a sticker\nto the badge.") MENU:set_text("B stop")
-    else MSG:set_text("NFC reader\nunavailable.") end
+    else CUE:hidden(false) MSG:set_text("NFC reader\nunavailable.") end
   elseif nfc then badge.nfc.disable() nfc=false end
 end
 -- Schedule screen compilation separately from the last sprite write and UI creation.
@@ -111,7 +114,7 @@ function on_enter(root)
   act=badge.store.get_int("act",1) owned=badge.store.get_int("owned",1)
   if owned<1 or owned>15 or owned%2==0 then owned=1 end
   if act<1 or act>4 or not own(act) then act=1 end
-  log(_VERSION.." main lua "..badge.sys.heap())
+  log(badge.sys.version())
   -- Render sprite images once, a few rows per tick, before any widgets exist.
   -- Bump the number when sprites change.
   local missing=badge.fs.read("sprites10.ok")~="10" and "sprites10.ok" or nil
@@ -142,9 +145,11 @@ function on_tick()
     return
   end
   if S==6 then
+    S=13
     if not BT then require("battle") gc() log("battle loaded")
     elseif not FX then FX=require("fx") gc() log("fx loaded")
-    elseif FX.init(R) then home() end
+    elseif FX.init(R) then home() return end
+    S=6
     return
   end
   if S==9 then
@@ -156,9 +161,12 @@ function on_tick()
   end
   if now<frame then return end
   frame=now+33 badge.sys.gc_step()
-  if TITLE and TITLE.tick(now) then
-    TITLE=nil gc() log("title dropped")
-    S=6 MSG:set_text("Getting ready...") MENU:set_text("")
+  if TITLE then
+    local state=S S=13
+    if TITLE.tick(now) then
+      TITLE=nil gc() log("title dropped")
+      MSG:set_text("Getting ready...") MENU:set_text("") S=6
+    else S=state end
     return
   end
   if S==0 then FX.ambient(now,P[act][3]) return end
@@ -177,17 +185,15 @@ function on_button(b,k)
   local I=badge.input.BUTTON
   -- HOME is delivered to us (home_button=1); its Released is the reliable edge.
   if b==I.HOME then
-    if k==badge.input.KIND.RELEASED and S>=11 then badge.app.exit() return end
-    if k==badge.input.KIND.RELEASED and S~=6 and S~=8 and S~=9 and S~=10 then
-      if S==7 then badge.app.exit() else scan(false) home() end
+    if k==badge.input.KIND.RELEASED then
+      if S>=6 or TITLE then badge.app.exit() else scan(false) home() end
     end
     return
   end
   if k~=badge.input.KIND.PRESSED then return end
   local up,dn,A,B=b==I.UP,b==I.DOWN,b==I.A,b==I.B
   if S==0 then
-    if up then cur=(cur+1)%3+1 menu(HM)
-    elseif dn then cur=cur%3+1 menu(HM)
+    if up or dn then cursor(up and -1 or 1)
     elseif A and cur==1 then scan(true)
     elseif A and cur==3 then badge.app.exit()
     elseif A then for _=1,4 do act=act%4+1 if own(act) then break end end save() home() end
@@ -195,7 +201,7 @@ function on_button(b,k)
     if B then scan(false) home() end
   elseif S==3 or S==5 then BT.button(up,dn,A,B)
   elseif S==7 then
-    if A then S=8 TITLE.go(home) end
+    if A then S=8 TITLE.go() end
   elseif S==4 and A and not FX.busy() then advance() end
 end
 

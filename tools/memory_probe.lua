@@ -21,7 +21,7 @@ local cache={}
 badge={
  ui={label=widget,box=widget,bar=widget,image=widget},
  led={set=noop,set_all=noop,clear=noop,show=noop},
- sys={ms=function() return now end,log=noop,random=function(n) return math.random(0,(n or 65536)-1) end,
+ sys={ms=function() return now end,version=function() return "test-firmware" end,log=noop,random=function(n) return math.random(0,(n or 65536)-1) end,
  heap=function() return math.floor(collectgarbage("count")*1024) end,
  gc_step=function() collectgarbage("step") end,
  stats=function() return {lua_used=badge.sys.heap(),lua_peak=0,free_heap=77728,widgets=widgets} end},

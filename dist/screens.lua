@@ -10,10 +10,10 @@ local d,step= nil,0
 local colors={0xffa000,0xff1800,0x0030ff,0x08d020}
 local t0,pk,finish,STAGE
 TITLE={}
-function TITLE.go(fn) finish=fn end
+function TITLE.go() finish=true end
 function TITLE.tick(now)
 if finish then
-STAGE:delete() EI:hidden(true) finish() return true
+local stage=STAGE STAGE=nil stage:delete() EI:hidden(true) return true
 end
 local t=now-t0
 local k=(t//2800)%4+1

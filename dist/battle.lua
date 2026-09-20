@@ -75,11 +75,9 @@ push("Wild "..P[i][1].."\nappeared!",nil,"appear") push("Go! "..P[me.id][1].."!"
 say(bmenu)
 end
 function BT.button(up,dn,A,B)
+if up or dn then cursor(up and -1 or 1) return end
 if S==3 then
-local it=items() local n=#it
-if up then cur=(cur+n-2)%n+1 menu(it)
-elseif dn then cur=cur%n+1 menu(it)
-elseif A and cur==3 then
+if A and cur==3 then
 local o,t=others()
 if #o==0 then W.MSG:set_text("No other Pokemon\ncan fight!") return end
 S=5 cur=1 menu(t) W.MSG:set_text("Switch to\nwhich Pokemon?")
@@ -87,9 +85,7 @@ elseif A then use(me,en,cur==2,"en") turn()
 elseif B then push("Got away safely!") say(home) end
 elseif S==5 then
 local o,t=others()
-if up then cur=(cur+#o-2)%#o+1 menu(t)
-elseif dn then cur=cur%#o+1 menu(t)
-elseif B then bmenu()
+if B then bmenu()
 elseif A then
 local i=o[cur]
 push("Come back,\n"..P[me.id][1].."!") team[me.id]=me.hp

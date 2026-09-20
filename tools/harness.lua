@@ -15,24 +15,35 @@ local modules={}
 local log={}
 local errors={}
 local exited=false
+local ui_calls=0
 
 local function W(kind)
   assert(loading_module~="screens","screen module constructed widgets during require")
   if mode=="widget_error" and widgets==13 then error("injected widget failure") end
+  if mode=="fx_error" and FX then error("injected particle setup failure") end
   widgets=widgets+1
   live=live+1 peak=math.max(peak,live)
   local w={kind=kind,text="",hidden_=false}
   function w:style(t,sel) assert(type(t)=="table") return self end
-  function w:align(a,x,y) assert(type(a)=="string") assert(math.type(x)=="integer" and math.type(y)=="integer","non-integer align "..tostring(x)..","..tostring(y)) return self end
+  function w:align(a,x,y) assert(type(a)=="string") assert(math.type(x)=="integer" and math.type(y)=="integer","non-integer align "..tostring(x)..","..tostring(y)) self.align_,self.x,self.y=a,x,y return self end
   function w:set_pos(x,y) assert(math.type(x)=="integer" and math.type(y)=="integer","non-integer pos") return self end
   function w:set_size(x,y) assert(math.type(x)=="integer" and math.type(y)=="integer","non-integer size") return self end
-  function w:set_text(s) assert(type(s)=="string","set_text needs a string, got "..type(s)) self.text=s return self end
+  function w:set_text(s)
+    if mode=="home_error" and S==13 and FX and not FX.init then error("injected home transition failure") end
+    assert(type(s)=="string","set_text needs a string, got "..type(s)) self.text=s return self
+  end
   function w:hidden(b) self.hidden_=b return self end
   function w:set_src(p) assert(type(p)=="string") assert(files[p],"set_src of missing file "..p) self.src=p return self end
   function w:set_range(a,b) return self end
   function w:set_value(v) assert(math.type(v)=="integer","bar value not integer") return self end
   function w:bring_to_front() assert(not self.deleted) end
-  function w:delete() assert(not self.deleted,"double delete") self.deleted=true live=live-1 end
+  function w:delete()
+    assert(not self.deleted,"double delete") self.deleted=true live=live-1
+    if mode=="title_error" and S==13 and TITLE and not BUILD and self.kind=="box" then error("injected title cleanup failure") end
+  end
+  for name,fn in pairs(w) do
+    if type(fn)=="function" then w[name]=function(self,...) ui_calls=ui_calls+1 return fn(self,...) end end
+  end
   return w
 end
 
@@ -54,6 +65,7 @@ badge={
   },
   sys={
     ms=function() return now end,
+    version=function() return "test-firmware" end,
     log=function(s) log[#log+1]=s end,
     random=function(n) if n then return math.random(0,n-1) end return math.random(0,2^31) end,
     stats=function() return {free_heap=30000,lua_used=math.floor(collectgarbage("count")*1024),lua_peak=0,widgets=live} end,
@@ -100,6 +112,7 @@ require=function(name)
   assert(not in_generation_tick,"module compiled during sprite generation")
   if modules[name] then return modules[name] end
   if name=="screens" and mode=="screen_error" then error("injected screen load failure") end
+  if name=="battle" and mode=="battle_error" then error("injected battle load failure") end
   if name=="battle" or name=="fx" then assert(TITLE==nil,"title retained while loading gameplay") end
   local f=assert(loadfile(DIR.."/"..name..".lua"))
   loading_module=name
@@ -175,10 +188,33 @@ if mode=="upgrade" then
 end
 ticks(150)                       -- parade
 press(B.A)
-for _=1,40 do ticks(1) if S~=0 then press(B.A) press(B.DOWN) press(B.HOME) end end
+if mode=="title_error" or mode=="battle_error" or mode=="fx_error" or mode=="home_error" then
+  local ok,err=pcall(function() ticks(40) end)
+  assert(not ok and string.find(err,"injected"),"expected transition failure")
+  assert(S==13,"failed transition did not enter escape state")
+  ticks(3) press(B.HOME) assert(exited,"HOME did not exit stalled transition") on_exit()
+  return {files=files,peak=peak,writes=writes}
+end
+if mode=="loading_exit" then
+  ticks(1,100) assert(S==6,"not loading gameplay")
+  press(B.HOME) assert(exited,"HOME did not exit gameplay loading") on_exit()
+  return {files=files,peak=peak,writes=writes}
+end
+for _=1,40 do ticks(1) if S~=0 then press(B.A) press(B.DOWN) end end
 ticks(10)
 assert(TITLE==nil,"title not dropped")
 assert(S==0 and BT and FX,"gameplay not ready")
+local function arrows(n)
+  local text=_G.W.MENU.text
+  for _=1,300 do
+    local old,ops=cur,ui_calls
+    press(B.DOWN)
+    assert(cur==old%n+1 and ui_calls==ops+1,"arrow press did more than one UI update")
+    assert(_G.W.MENU.text==text and _G.W.CUE.align_=="top_left" and _G.W.CUE.y==3+(cur-1)*19,"arrow misplaced or menu rebuilt")
+  end
+  while cur~=1 do press(B.DOWN) end
+end
+arrows(3)
 if mode=="invalid_save" then assert(owned==1 and act==1,"invalid save not repaired") end
 press(B.A)                       -- SCAN
 if mode=="no_nfc" then
@@ -191,6 +227,7 @@ badge.nfc.text="PKM03" ticks(20)
 assert(not badge.nfc.enabled,"nfc still on after encounter")
 press(B.A) ticks(60) press(B.A) ticks(60) press(B.A)
 assert(S==3,"opening dialogue did not reach moves")
+arrows(owned==1 and 2 or 3)
 press(B.A)
 for _=1,24 do
   if S~=4 then break end
@@ -244,6 +281,7 @@ owned,act=3,1 home()
 encounter("PKM03")
 press(B.DOWN) press(B.DOWN) press(B.A)
 assert(S==5,"switch menu missing")
+arrows(1)
 press(B.A)
 assert(me.id==2 and S==4,"switch did not change Pokemon")
 drain() assert(S==3,"switch turn did not return to moves")
