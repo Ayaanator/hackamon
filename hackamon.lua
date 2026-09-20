@@ -40,6 +40,9 @@ local function gcset(p)
 end
 -- Sprite image files live in the app folder (the image widget accepts nothing else).
 function spr(i) return "p"..i..".bin" end
+-- Some firmware reports exists=false for files visible in the console. Read the
+-- actual image instead; only one 3,212-byte string is retained by this helper.
+function valid(i) local b=badge.fs.read(spr(i)) return b and #b==3212 end
 function log(t)
   local s=badge.sys.stats()
   badge.sys.log(t.." lua="..s.lua_used.." peak="..s.lua_peak.." free="..s.free_heap.." widgets="..s.widgets)
@@ -105,7 +108,7 @@ scan=function(on)
 end
 -- Schedule screen compilation separately from the last sprite write and UI creation.
 local function start()
-  S=11
+  S,valid=11,nil
   if TMP then TMP:delete() TMP=nil end
 end
 
@@ -121,11 +124,11 @@ function on_enter(root)
   -- Render sprite images once, a few rows per tick, before any widgets exist.
   -- Bump the number when sprites change.
   local missing=badge.fs.read("sprites10.ok")~="10" and "sprites10.ok" or nil
-  for i=1,4 do if not badge.fs.exists(spr(i)) then missing=spr(i) end end
+  for i=1,4 do if not valid(i) then missing=spr(i) end end
   if missing then
-    log("prepare: missing/invalid "..missing)
+    log("prepare: "..missing)
     S=9 nxt=badge.sys.ms() TMP=badge.ui.label(root,"Preparing sprites...") TMP:align("center",0,0)
-    require("gen") gc() log("renderer loaded")
+    require("gen") gc() log("renderer")
   else start() end
   on_enter=nil -- Release initialization code and its GC-configuration helper.
 end

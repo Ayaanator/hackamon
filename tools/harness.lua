@@ -17,6 +17,7 @@ local errors={}
 local exited=false
 local ui_calls=0
 local leds,shows={},0
+local reads=0
 
 local function W(kind)
   assert(loading_module~="screens","screen module constructed widgets during require")
@@ -96,13 +97,14 @@ badge={
     end,
     append=function(n,d)
       io=io+1
+      if mode=="silent_append" then return end
       if mode=="interrupted" then error("injected interrupted sprite write") end
       if mode=="write_error" then return false,"storage quota" end
       max_write=math.max(max_write,#d) files[n]=(files[n] or "")..d
     end,
-    read=function(n) return files[n] end,
+    read=function(n) reads=reads+1 return files[n] end,
     remove=function(n) files[n]=nil return true end,
-    exists=function(n) return files[n]~=nil end,
+    exists=function(n) return not mode:find("exists_false",1,true) and files[n]~=nil end,
   },
   input={BUTTON={A=1,B=2,HOME=3,DOWN=4,LEFT=5,RIGHT=6,UP=7,AUX1=8,START=9},KIND={PRESSED=1,RELEASED=2}},
   app={exit=function() exited=true end},
@@ -128,11 +130,12 @@ end
 local function ticks(n,step)
   for _=1,n do
     now=now+(step or 20)
-    local stage,before,beforeio=S,widgets,io
+    local stage,before,beforeio,beforeread=S,widgets,io,reads
     in_generation_tick=stage==9
     on_tick()
     in_generation_tick=false
     if stage==9 then assert(io-beforeio<=1,"multiple flash writes in one tick") end
+    if stage==9 then assert(reads-beforeread<=1,"multiple file read-backs in one tick") end
     if stage==6 or stage==11 or stage==12 then assert(widgets-before<=1,"startup created multiple widgets per tick") end
   end
 end
@@ -145,7 +148,7 @@ if mode=="invalid_save" then store.owned=128 store.act=99 end
 local chunk=assert(loadfile(DIR.."/hackamon.lua"))
 chunk()
 on_enter({})
-if mode=="write_error" or mode=="marker_error" or mode=="silent_marker" then
+if mode=="write_error" or mode=="marker_error" or mode=="silent_marker" or mode=="silent_append" then
   local ok,err=pcall(function() ticks(120) end)
   assert(not ok and string.find(err,"Sprite"),"storage failure was not reported")
   assert(S==13,"failed generation not suspended")
@@ -182,8 +185,8 @@ end
 assert(files["sprites10.ok"]=="10")
 assert(max_write<=652,"renderer exceeded the 652-byte chunk bound")
 assert(io==0 or io==21,"expected zero cached writes or 21 generation writes")
-if mode=="recipient" then assert(writes==0,"received sprites were regenerated") end
-if mode=="missing" or mode=="upgrade" then assert(writes==5,"missing sprite not repaired") end
+if mode=="recipient" or mode=="exists_false" then assert(writes==0,"received sprites were regenerated") end
+if mode=="missing" or mode=="upgrade" or mode=="short_sprite" then assert(writes==5,"missing sprite not repaired") end
 assert(TITLE,"title not loaded")
 if mode=="upgrade" then
   for i=1,4 do assert(files["m"..i..".bin"]==nil and files["s"..i..".bin"]==nil,"old sprite survived migration") end

@@ -35,9 +35,14 @@ for engine in (lua54, lua55):
         files = run(engine, directory, 'cold')
         check_installed_size(files)
         run(engine, directory, 'recipient', files)
+        run(engine, directory, 'exists_false', files)
+        run(engine, directory, 'exists_false_cold')
         damaged = dict(files)
         del damaged[b'p2.bin']
         run(engine, directory, 'missing', damaged)
+        damaged = dict(files)
+        damaged[b'p2.bin'] = damaged[b'p2.bin'][:652]
+        run(engine, directory, 'short_sprite', damaged)
         run(engine, directory, 'invalid_save', files)
         run(engine, directory, 'no_nfc', files)
         run(engine, directory, 'screen_error')
@@ -47,8 +52,8 @@ for engine in (lua54, lua55):
         run(engine, directory, 'upgrade', old)
         partial = run(engine, directory, 'interrupted', damaged)
         run(engine, directory, 'recovery', partial)
-        for failure in ('write_error', 'marker_error', 'silent_marker'):
+        for failure in ('write_error', 'marker_error', 'silent_marker', 'silent_append'):
             run(engine, directory, failure)
         for failure in ('title_error', 'battle_error', 'fx_error', 'home_error', 'loading_exit'):
             run(engine, directory, failure, files)
-print('All 72 scenarios passed.')
+print('All 88 scenarios passed.')

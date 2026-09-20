@@ -30,13 +30,12 @@ GEN=function()
     else badge.fs.remove((i%2==0 and "m" or "s")..((i+1)//2)..".bin") end
     job=job+1 return false
   end
-  if job==20 then
-    for i=1,4 do assert(badge.fs.exists(spr(i)),"Sprite missing: "..i) end
-    written(badge.fs.write("sprites10.ok","10")) job=21 return false
-  end
-  if job==21 then
-    assert(badge.fs.read("sprites10.ok")=="10","Sprite marker not saved")
-    return true
+  if job>=20 then
+    -- Read back one sprite per tick; do not trust exists() on affected firmware.
+    if job<24 then assert(valid(job-19),"Sprite invalid: "..(job-19))
+    elseif job==24 then written(badge.fs.write("sprites10.ok","10"))
+    else assert(badge.fs.read("sprites10.ok")=="10","Sprite marker not saved") return true end
+    job=job+1 return false
   end
   local id,part=job//5+1,job%5
   local name=spr(id)

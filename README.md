@@ -99,11 +99,11 @@ The complete installed app, **after generation**, includes code, manifest, four
 
 | Configuration | Installed bytes | Files |
 | --- | ---: | ---: |
-| Text files with LF, with icon | 36,774 | 12 |
-| Text files with CRLF, with icon | **36,813** | **12** |
-| Text files with CRLF, without icon | 31,509 | 11 |
+| Text files with LF, with icon | 36,821 | 12 |
+| Text files with CRLF, with icon | **36,860** | **12** |
+| Text files with CRLF, without icon | 31,556 | 11 |
 
-This leaves **12,339 bytes** under the firmware's 49,152-byte sharing limit even
+This leaves **12,292 bytes** under the firmware's 49,152-byte sharing limit even
 with the image icon and Windows line endings. Our build rejects anything above
 **36 KiB**, rather than just checking that it barely fits 48 KiB. The harness also
 counts the actual generated files, independently of the build's expected sizes.
@@ -136,14 +136,14 @@ A repeatable **64-bit host Lua 5.5** comparison against commit `be431b3` gives:
 
 | Phase | Previous live Lua bytes | New live Lua bytes |
 | --- | ---: | ---: |
-| Title | 33,586 | 31,205 |
-| Home after loading gameplay | 56,610 | 50,657 |
-| Battle | 56,863 | 50,974 |
-| Attack | 58,228 | 51,810 |
+| Title | 33,586 | 31,261 |
+| Home after loading gameplay | 56,610 | 50,713 |
+| Battle | 56,863 | 51,030 |
+| Attack | 58,228 | 51,866 |
 
 These are post-GC live game allocations above the same mock-runtime baseline,
 with flash contents held outside Lua. The attack measurement is about **11% lower**.
-The corrected mechanics and restored chase add 3,484 live Lua bytes during this
+The corrected mechanics, restored chase and startup fix add 3,540 live Lua bytes during this
 attack compared with the immediately preceding `9e22cdc` build (48,326 bytes).
 They add no widgets. Deployment whitespace compression saves transfer bytes,
 not Lua runtime memory; the source remains readable in the repository root.
@@ -166,7 +166,7 @@ still depend on the physical badge and are not measured by the host tests.
 
 The screen shows the current sprite number and the console reports elapsed time.
 Normally preparation happens only when sprites or their completion marker are
-missing/invalid, not on every reopen. Startup logs `prepare: missing/invalid ...`
+missing/invalid, not on every reopen. Startup logs `prepare: ...`
 with the file that triggered regeneration. If this repeats, after loading run:
 
 ```
@@ -177,6 +177,21 @@ It should contain `10`. Capture that output and the first preparation/error log;
 repeated cache loss needs diagnosis, not an assumption that a two-minute load is
 normal. Existing valid version-10 sprites are byte-identical and are reused by
 this update. The host suite verifies zero write calls on cached reopen.
+
+One badge running `v0.1.2-392-gd3089c4` stopped at `Sprite missing: 1` even though
+console `ls /littlefs/apps/hackamon` showed all four `p*.bin` files at the correct
+3,212-byte size. The failed check used `badge.fs.exists()`. Startup and generation
+now read the file and check its length instead; neither relies on `exists()`.
+Generation reads back one sprite per tick before saving the completion marker.
+This temporarily reads up to 3,212 bytes per image, separate from the 652-byte
+write buffer; the verification helper is released before the title loads.
+
+Because that failed launch never saved the marker, the first launch after this
+fix prepares sprites once more. A subsequent reopen should reuse them. If the
+read-based verification still reports `Sprite invalid`, capture that error and
+the directory listing: readable files have not yet been verified on the device.
+The regression suite covers false existence reports on both cold and cached
+launches, truncated images, and silent append failures.
 
 ## Menu responsiveness and interrupted transitions
 
@@ -212,7 +227,7 @@ badge. Firmware versions, available native heap and fragmentation still differ.
   default; enforces the 36 KiB target and 16-file limit. `--without-icon` reports the
   optional smaller variant. Token-preserving whitespace removal and line grouping
   reduce transfer bytes, not runtime RAM. Strings and sprite artwork are preserved.
-- `python tools/run_harness.py` (requires `pip install lupa`): **72 scenarios** across
+- `python tools/run_harness.py` (requires `pip install lupa`): **88 scenarios** across
   Lua 5.4 / 5.5 and source / deployment files. Checks cold and recipient launches,
   missing assets, migration preserving saves/icon, interrupted writes and recovery,
   invalid saves, unavailable NFC, injected setup/storage errors, missing marker
