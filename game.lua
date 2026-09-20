@@ -13,6 +13,7 @@ P={
 TP={"fire","water","grass","elec","psy"}
 cur=1 me,en,team={},{},{}
 local nfc,nxt,frame=false,0,0
+local retries=0
 local HM={"SCAN","SWITCH LEAD","EXIT"}
 local count=0
 local choices,top
@@ -78,7 +79,7 @@ scan=function(on)
   if on then
     PI:align("bottom_left",14,-70)
     CUE:hidden(true) MSG:set_size(118,58) nfc=badge.nfc.enable()
-    if nfc then badge.nfc.clear() S=2 MSG:set_text("Scanning...\nHold a sticker\nto the badge.") MENU:set_text("B stop")
+    if nfc then retries,nxt=0,0 badge.nfc.clear() S=2 MSG:set_text("Scanning...\nHold a sticker\nto the badge.") MENU:set_text("B stop")
     else CUE:hidden(false) MSG:set_text("NFC reader\nunavailable.") end
   elseif nfc then badge.nfc.disable() nfc=false end
 end
@@ -106,9 +107,17 @@ function M.tick()
   end
   if S~=2 or not nfc or now<nxt then return end
   nxt=now+300
-  if not badge.nfc.card() then return end
-  local t=badge.nfc.read_text() badge.nfc.clear()
-  local m=string.match(t or "","^PKM(%d+)$")
+  if not badge.nfc.card() then retries=0 return end
+  local t,err=badge.nfc.read_text()
+  if err or type(t)~="string" or not string.find(t,"%S") then
+    retries=retries+1
+    if retries>=3 then
+      retries=0 badge.nfc.clear() MSG:set_text("Lift tag, then\nscan again.")
+    else MSG:set_text("Read incomplete.\nHold tag still.") end
+    return
+  end
+  retries=0 badge.nfc.clear()
+  local m=string.match(t,"^%s*PKM(%d+)%s*$")
   local i=m and tonumber(m)+1
   if i and i>=2 and i<=5 then scan(false) BT.encounter(i) else MSG:set_text("That is not a\nPokemon sticker.") end
 end
