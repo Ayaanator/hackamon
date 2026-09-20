@@ -18,8 +18,7 @@ Each received copy starts with Pikachu. The other four live on NFC stickers.
 | `PKM03` | Bulbasaur | 38 | Grass/Poison | Tackle | Leech Seed: 90% accurate; drains 1/8 max HP per turn |
 | `PKM04` | Mewtwo | **100** | Psychic | Swift: 60 power, special Normal damage | Psystrike: 100 power, special Psychic damage against physical Defense |
 
-Stats are fixed at level 15, neutral nature, zero IVs/EVs, except Mewtwo uses custom boss stats (100 HP; Attack 20, Defense 18,
-Special Attack 13, Special Defense 18, Speed 33). Quick Attack, Scratch,
+Stats are fixed at level 15, neutral nature, zero IVs/EVs, except Mewtwo has the requested custom 100 HP. Quick Attack, Scratch,
 and Tackle are **Normal-type physical attacks, power 40**, regardless of the
 Pokemon using them. Quick Attack has +1 priority; otherwise Speed decides who
 acts first, with random ties. A fainted Pokemon cannot act.
@@ -42,8 +41,7 @@ physical Defense (also used by Psystrike), and raises it to 1.5x at +1, 2x at +2
 Leech Seed fails against Grass, persists until the seeded Pokemon switches,
 and heals only the HP actually drained. Seed drains resolve before burn damage.
 
-Apart from the custom boss stats and seed resistance described below, these rules
-follow the modern mechanics implemented by Pokemon Showdown's
+These rules follow the modern mechanics implemented by Pokemon Showdown's
 [move data](https://github.com/smogon/pokemon-showdown/blob/master/data/moves.ts),
 [status conditions](https://github.com/smogon/pokemon-showdown/blob/master/data/conditions.ts),
 [species stats](https://github.com/smogon/pokemon-showdown/blob/master/data/pokedex.ts),
@@ -64,43 +62,12 @@ weather, or leveling. Winning captures the opponent; losing now preserves your c
   the animation. The home sprite bobs and LEDs breathe.
 - Every encounter starts with your team healed. Winning captures a new Pokemon;
   duplicates do not change ownership. Losing returns home with your collection intact.
-- Mewtwo uses pink-purple LEDs (`#E050D8`) for its normal flash, special chase, and idle animation.
+- Mewtwo uses purple LEDs for its normal flash, special chase, and idle animation.
   A full team's switch menu scrolls within the existing three visible rows.
 - HOME returns to the home menu during play and exits from the title or interrupted
   startup. EXIT saves and leaves. Complete a normal exit before powering off.
 - The enemy remains top-right and your lead bottom-left, with HP bars and dialogue.
   Both sides now reuse the same 40x40 artwork facing. The separate title wipe is gone.
-
-## Mewtwo challenge
-
-Collect **Pikachu, Charmander, Squirtle, and Bulbasaur** before scanning `PKM04`.
-An incomplete team gets a reminder instead of starting the fight. Mewtwo keeps
-100 HP, but its lower attacking and defensive stats make it beatable:
-
-- Neither move can knock out a healthy starter in one hit. At full Defense,
-  Psystrike deals 16-21 to Pikachu/Charmander, 12-15 to Squirtle, and 30-36 to
-  Bulbasaur (Poison is weak to Psychic). Swift deals 5-8 across the starters.
-- Pikachu's Quick Attack now deals 7-9; Charmander's Ember deals 12-15 before burn.
-- Mewtwo chooses Psystrike 80% of the time. Paralysis slows it enough for every
-  starter to move first; Squirtle's Withdraw reduces Psystrike's damage.
-- Mewtwo resists Leech Seed: it drains **1/32 max HP (3 HP)** per turn instead of
-  1/8. Healing equals the actual HP drained. Other Pokemon retain their existing
-  seed rules. This prevents the 100-HP boss becoming an easy source of healing.
-- When a Pokemon faints **against Mewtwo**, choose a surviving teammate. That
-  replacement does not cost an enemy attack. HP, status and boss damage persist;
-  you lose only when no teammate remains. Normal encounters keep their existing
-  faint/end behaviour, and losing never deletes your collection.
-
-A useful approach is Thunder Wave, Bulbasaur's Leech Seed, Charmander's Ember,
-then Squirtle's Withdraw/Tackle. The seeded simulation of that strategy wins
-1,907 of 2,000 fights, averaging 1.5 survivors on wins. Basic-attack spam and each
-starter alone win 0/2,000 in the tested samples. These are scripted simulations,
-not a measured human win rate or proof that every possible solo strategy fails;
-the full-team encounter requirement is enforced separately.
-
-Mewtwo's sprite now has highlighted eyes, shaded limbs and a curved pink tail.
-It remains 20x20 pixel art rendered at 40x40: the same 3,212-byte RGB565 file,
-no additional images or widgets, and the original charge/chase timing.
 
 ## Stickers
 
@@ -121,8 +88,7 @@ Use all **six files in [dist/](dist/)**. No build tools are needed to install th
 4. **Connect > Push > Reboot**, then open Hackamon once and let preparation finish.
    The upgrade removes the eight old `s*.bin` / `m*.bin` generated sprites and old
    marker, one per tick, and writes five `p*.bin` sprites. It preserves the icon.
-   This tuning update preserves saves from `cfe06e6` and later; only older,
-   untagged saves reset once. Let this finish **before sharing**; merely pushing code leaves old
+   The new save format starts with Pikachu once; subsequent captures persist. Let this finish **before sharing**; merely pushing code leaves old
    generated files on the badge until the game runs.
 5. A starts the game. The short preparation/loading stages ignore gameplay buttons.
 
@@ -140,12 +106,12 @@ The complete installed app, **after generation**, includes code, manifest, five
 
 | Configuration | Installed bytes | Files |
 | --- | ---: | ---: |
-| Text files with LF, with icon | 41,688 | 15 |
-| Text files with CRLF, with icon | **41,731** | **15** |
-| CRLF with icon, import header also retained in main.lua | 41,841 | 15 |
-| Text files with CRLF, without icon | 36,427 | 14 |
+| Text files with LF, with icon | 41,227 | 15 |
+| Text files with CRLF, with icon | **41,270** | **15** |
+| CRLF with icon, import header also retained in main.lua | 41,380 | 15 |
+| Text files with CRLF, without icon | 35,966 | 14 |
 
-This leaves **7,421 bytes** under the firmware's 49,152-byte sharing limit even
+This leaves **7,882 bytes** under the firmware's 49,152-byte sharing limit even
 with the image icon and Windows line endings. Our build rejects anything above
 **42 KiB**, including the retained-header variant, leaving at least 6 KiB below 48 KiB.
 The target increased from 36 KiB to accommodate Mewtwo and transfer-safe saves. The harness also
@@ -176,7 +142,7 @@ File size and runtime RAM are separate budgets. This version also reduces RAM:
 - Run-length encoding reduces the stored pixel descriptions. Only the current
   sprite's 400-character description is expanded when rendering begins. The original four
   resulting binary sprites are byte-identical to the previous build. The first
-  launch refreshes Mewtwo; once all five files and the version-11 marker are present,
+  launch adds Mewtwo; once all five files and the version-10 marker are present,
   later launches reuse them.
 - Each append batches eight output rows (640 bytes; the first write is 652 bytes
   including the header). No complete bitmap is assembled in Lua. The
@@ -191,17 +157,17 @@ commit `01cbf93`, gives:
 | Phase | Previous live Lua bytes | New live Lua bytes |
 | --- | ---: | ---: |
 | Main loaded | 26,313 | 11,778 |
-| Title | 34,082 | ~13,000-14,500 |
-| Home after loading gameplay | 53,534 | 53,314 |
-| Battle | 53,851 | 54,101 |
-| Attack | 54,207 | 54,457 |
+| Title | 34,082 | 14,425 |
+| Home after loading gameplay | 53,534 | 52,329 |
+| Battle | 53,851 | 53,116 |
+| Attack | 54,207 | 53,472 |
 
 These are post-GC live game allocations above the same mock-runtime baseline,
 with flash contents held outside Lua. This corrected model keeps the original
 registered callback references alive; older measurements did not account for
 that retention. Main and title remain over **55% lower** than that failing build. Relative to
-the preceding Mewtwo build (`cfe06e6`), the party replacement logic adds **985 bytes**
-of live host Lua memory at home/attack. Title samples vary slightly with GC history. It adds no widgets; native image widgets
+the preceding four-Pokemon build (`83f3848`), this update adds about **1.7 KiB**
+of live host Lua memory at home/attack. It adds no widgets; native image widgets
 still display at most two sprites at once.
 Deployment whitespace compression saves transfer bytes,
 not Lua runtime memory; the source remains readable in the repository root.
@@ -235,13 +201,13 @@ missing/invalid, not on every reopen. Startup logs `prepare: ...`
 with the file that triggered regeneration. If this repeats, after loading run:
 
 ```
-cat /littlefs/apps/hackamon/sprites11.ok
+cat /littlefs/apps/hackamon/sprites10.ok
 ```
 
-It should contain `11`. Capture that output and the first preparation/error log;
+It should contain `10`. Capture that output and the first preparation/error log;
 repeated cache loss needs diagnosis, not an assumption that a two-minute load is
-normal. Version-10 caches are regenerated once to refresh Mewtwo and remove the old
-marker. The original four sprite files retain identical pixels. The host suite verifies zero sprite writes on cached reopen.
+normal. Existing valid version-10 sprites are byte-identical and are reused by
+this update after Mewtwo is generated. The host suite verifies zero sprite writes on cached reopen.
 
 One badge running `v0.1.2-392-gd3089c4` stopped at `Sprite missing: 1` even though
 console `ls /littlefs/apps/hackamon` showed all four `p*.bin` files at the correct
@@ -296,9 +262,8 @@ That makes normal badge-to-badge transfers, repeated transfers over an existing
 recipient, and onward sharing start fresh. Reopening the same badge restores its
 captured Pokemon and selected lead. Losses keep the collection too.
 
-**Only saves from before `cfe06e6` reset once.** Those old saves have no marker
-to distinguish a local collection from stale recipient data. This balance/art
-update preserves tagged saves and existing captures. Subsequent
+**The first launch of this update resets old saves once.** Older saves have no
+marker to distinguish a local collection from stale recipient data. Subsequent
 IDE code updates preserve progress provided `trainer.id` and `appdata/team` remain.
 The game verifies save writes and reports a storage failure instead of silently
 claiming that progress was saved. Do not manually upload someone else's private data.
@@ -325,14 +290,13 @@ badge. Firmware versions, available native heap and fragmentation still differ.
   default; enforces the 42 KiB target and 16-file limit. `--without-icon` reports the
   optional smaller variant. Token-preserving whitespace removal and line grouping
   reduce transfer bytes, not runtime RAM. Strings and sprite artwork are preserved.
-- `python tools/run_harness.py` (requires `pip install lupa`): **156 scenarios** across
+- `python tools/run_harness.py` (requires `pip install lupa`): **152 scenarios** across
   Lua 5.4 / 5.5 and source / deployment files. Checks cold and recipient launches,
   missing assets, migration preserving saves/icon, interrupted writes and recovery,
   invalid saves, unavailable NFC, injected setup/storage errors, missing marker
   read-back, title/game-loading/home failures, stable registered callbacks,
   NFC cleanup via the registered exit, HOME escape, cursor stress tests,
-  battle/switch/capture/loss, fifth-Pokemon scrolling and pink-purple LEDs, boss faint replacement,
-  version-10 sprite-cache upgrades without changing the other Pokemon,
+  battle/switch/capture/loss, fifth-Pokemon scrolling and purple LEDs,
   separate-runtime reopens, captures persisting, sender/receiver save isolation,
   retransfer over an existing save, onward/return sharing, and save-write failures,
   repeated encounters, bounded widget creation, pixel format and actual installed size.
@@ -343,10 +307,7 @@ badge. Firmware versions, available native heap and fragmentation still differ.
   checks whitespace compaction against numeric, quoted and operator edge cases.
 - `python tools/check_startup.py`: limits entry-chunk compilation/execution to
   24 KiB above a fixed host baseline and compares the original four generated sprite files to
-  commit `01cbf93`, with the refreshed Mewtwo sprite and version-11 marker. The old entry chunk fails that allowance; the new one passes.
-- `python tools/check_mewtwo.py`: 2,000 seeded battles per strategy across both
-  Lua versions and source/dist (48,000 simulated fights). Checks tactics remain
-  effective, simple attacks/solo runs rarely succeed, and wins use most of the team.
+  commit `01cbf93`, with one new Mewtwo sprite. The old entry chunk fails that allowance; the new one passes.
 - `python tools/profile_memory.py --compare 01cbf93`: repeats the live Lua comparison
   above using the baseline commit's deployment files and the current `dist/` files.
 

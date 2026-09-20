@@ -64,8 +64,7 @@ for engine in (lua54, lua55):
         assert compiles(engine, (directory / 'hackamon.lua').read_bytes(), 24 * 1024), 'entry chunk exceeds 24 KiB host allowance'
         sprites = render(engine, (directory / 'gen.lua').read_bytes())
         old_sprites = render(engine, old_art)
-        assert all(sprites.get(k) == v for k, v in old_sprites.items() if k.endswith(b'.bin')), 'original sprite pixels or marker changed'
-        assert sprites[b'sprites11.ok'] == b'11'
-        assert set(sprites) == (set(old_sprites) - {b'sprites10.ok'}) | {b'p5.bin', b'sprites11.ok'} and len(sprites[b'p5.bin']) == 3212
+        assert all(sprites.get(k) == v for k, v in old_sprites.items()), 'original sprite pixels or marker changed'
+        assert set(sprites) == set(old_sprites) | {b'p5.bin'} and len(sprites[b'p5.bin']) == 3212
     print(engine.__name__, 'entry chunk fits 24 KiB additional host Lua memory; baseline fails')
-print('Original four sprites are byte-identical to', BASELINE, '; fifth sprite refreshed with version 11 marker')
+print('Original four sprites and marker are byte-identical to', BASELINE, '; fifth sprite added')

@@ -63,7 +63,7 @@ local function enter(root)
   log(badge.sys.version())
   -- Render sprite images once, a few rows per tick, before any widgets exist.
   -- Bump the number when sprites change.
-  local missing=badge.fs.read("sprites11.ok")~="11" and "sprites11.ok" or nil
+  local missing=badge.fs.read("sprites10.ok")~="10" and "sprites10.ok" or nil
   for i=1,5 do if not valid(i) then missing=spr(i) end end
   if missing then
     log("prepare: "..missing)

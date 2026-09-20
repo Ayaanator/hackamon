@@ -2,13 +2,13 @@
 local M={}
 local scan
 -- Fixed level 15, neutral nature, zero IV/EV: name, HP, type, two moves, effect,
--- Attack, Defense, Sp. Attack, Sp. Defense, Speed. Mewtwo uses custom boss stats.
+-- Attack, Defense, Sp. Attack, Sp. Defense, Speed. Mewtwo has a custom 100 HP.
 P={
  {"PIKACHU",35,4,"QUICK ATTACK","THUNDER WAVE","par",21,17,20,20,32},
  {"CHARMANDER",36,1,"SCRATCH","EMBER","burn",20,17,23,20,24},
  {"SQUIRTLE",38,2,"TACKLE","WITHDRAW","def",19,24,20,24,17},
  {"BULBASAUR",38,3,"TACKLE","LEECH SEED","seed",19,19,24,24,18},
- {"MEWTWO",100,5,"SWIFT","PSYSTRIKE","psy",20,18,13,18,33},
+ {"MEWTWO",100,5,"SWIFT","PSYSTRIKE","psy",38,32,51,32,44},
 }
 TP={"fire","water","grass","elec","psy"}
 cur=1 me,en,team={},{},{}

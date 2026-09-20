@@ -46,13 +46,6 @@ for engine in (lua54, lua55):
         print(f'Testing {engine.__name__}: {directory.name}', flush=True)
         files = run(engine, directory, 'cold')
         check_installed_size(files)
-        old_sprite = dict(files)
-        old_sprite.pop(b'sprites11.ok')
-        old_sprite[b'sprites10.ok'] = b'10'
-        old_sprite[b'p5.bin'] = b'old art' + b'\0' * 3205
-        updated = run(engine, directory, 'sprite_upgrade', old_sprite)
-        assert b'sprites10.ok' not in updated and updated[b'p5.bin'] != old_sprite[b'p5.bin']
-        assert all(updated[f'p{i}.bin'.encode()] == files[f'p{i}.bin'.encode()] for i in range(1,5))
         run(engine, directory, 'recipient', shared(files))
         run(engine, directory, 'scan_exit', files)
         run(engine, directory, 'exists_false', files)
@@ -99,4 +92,4 @@ for engine in (lua54, lua55):
         run(engine, directory, 'save_open', returned, (1, 1))
         # Ordinary IDE code updates keep the marker and private collection.
         run(engine, directory, 'save_open', captured, (31, 5))
-print('All 156 scenarios passed.')
+print('All 152 scenarios passed.')
