@@ -8,7 +8,7 @@ P={
  {"CHARMANDER",36,1,"SCRATCH","EMBER","burn",20,17,23,20,24},
  {"SQUIRTLE",38,2,"TACKLE","WITHDRAW","def",19,24,20,24,17},
  {"BULBASAUR",38,3,"TACKLE","LEECH SEED","seed",19,19,24,24,18},
- {"MEWTWO",100,5,"SWIFT","PSYSTRIKE","psy",38,32,51,32,44},
+ {"MEWTWO",100,5,"SWIFT","PSYSTRIKE","psy",20,18,13,18,33},
 }
 TP={"fire","water","grass","elec","psy"}
 cur=1 me,en,team={},{},{}
