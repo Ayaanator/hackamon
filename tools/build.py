@@ -25,7 +25,7 @@ def build(with_icon=True):
                 if s == ']==]':
                     in_header = False
             elif s and not s.startswith('--'):
-                out.append(line)
+                out.append(s)
         text = '\n'.join(out) + '\n'
         (dist / name).write_text(text, encoding='utf-8', newline='\n')
         sizes[name] = len(text.encode('utf-8'))

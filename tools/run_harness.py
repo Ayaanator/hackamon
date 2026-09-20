@@ -47,4 +47,6 @@ for engine in (lua54, lua55):
         run(engine, directory, 'upgrade', old)
         partial = run(engine, directory, 'interrupted', damaged)
         run(engine, directory, 'recovery', partial)
-print('All 40 scenarios passed.')
+        for failure in ('write_error', 'marker_error', 'silent_marker'):
+            run(engine, directory, failure)
+print('All 52 scenarios passed.')

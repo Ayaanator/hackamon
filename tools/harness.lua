@@ -7,7 +7,7 @@ local store={}
 local files=INPUT_FILES or {}
 local mode=TEST_MODE or "cold"
 local widgets=0
-local live,peak,max_write,writes=0,0,0,0
+local live,peak,max_write,writes,io=0,0,0,0,0
 local in_button=false
 local in_generation_tick=false
 local loading_module=nil
@@ -73,11 +73,19 @@ badge={
     read_text=function() return badge.nfc.text end,
   },
   fs={
-    write=function(n,d) max_write=math.max(max_write,#d) writes=writes+1 files[n]=d end,
+    write=function(n,d)
+      io=io+1
+      if n=="sprites10.ok" and mode=="marker_error" then return nil,"storage quota" end
+      if n=="sprites10.ok" and mode=="silent_marker" then return end
+      max_write=math.max(max_write,#d) writes=writes+1 files[n]=d
+    end,
     append=function(n,d)
+      io=io+1
       if mode=="interrupted" then error("injected interrupted sprite write") end
+      if mode=="write_error" then return false,"storage quota" end
       max_write=math.max(max_write,#d) files[n]=(files[n] or "")..d
     end,
+    read=function(n) return files[n] end,
     remove=function(n) files[n]=nil return true end,
     exists=function(n) return files[n]~=nil end,
   },
@@ -104,10 +112,11 @@ end
 local function ticks(n,step)
   for _=1,n do
     now=now+(step or 20)
-    local stage,before=S,widgets
+    local stage,before,beforeio=S,widgets,io
     in_generation_tick=stage==9
     on_tick()
     in_generation_tick=false
+    if stage==9 then assert(io-beforeio<=1,"multiple flash writes in one tick") end
     if stage==6 or stage==11 or stage==12 then assert(widgets-before<=1,"startup created multiple widgets per tick") end
   end
 end
@@ -120,6 +129,14 @@ if mode=="invalid_save" then store.owned=128 store.act=99 end
 local chunk=assert(loadfile(DIR.."/hackamon.lua"))
 chunk()
 on_enter({})
+if mode=="write_error" or mode=="marker_error" or mode=="silent_marker" then
+  local ok,err=pcall(function() ticks(120) end)
+  assert(not ok and string.find(err,"Sprite"),"storage failure was not reported")
+  assert(S==13,"failed generation not suspended")
+  ticks(3) press(B.HOME) assert(exited,"HOME did not exit failed generation")
+  on_exit()
+  return {files=files,peak=peak,writes=writes}
+end
 if mode=="interrupted" then
   local ok,err=pcall(function() ticks(120) end)
   assert(not ok and string.find(err,"injected"),"expected interrupted write")
@@ -147,7 +164,8 @@ for i=1,4 do
   end end
 end
 assert(files["sprites10.ok"]=="10")
-assert(max_write<=160,"renderer buffered more than two rows")
+assert(max_write<=652,"renderer exceeded the 652-byte chunk bound")
+assert(io==0 or io==21,"expected zero cached writes or 21 generation writes")
 if mode=="recipient" then assert(writes==0,"received sprites were regenerated") end
 if mode=="missing" or mode=="upgrade" then assert(writes==5,"missing sprite not repaired") end
 assert(TITLE,"title not loaded")
@@ -235,5 +253,5 @@ on_button(B.HOME,2) ticks(5)
 press(B.DOWN) press(B.DOWN) press(B.A) ticks(200,20)
 assert(exited,"EXIT did not exit")
 on_exit()
-print("HARNESS OK "..mode.." peak_widgets="..peak.." max_write="..max_write.." sprite_writes="..writes)
+print("HARNESS OK "..mode.." peak_widgets="..peak.." max_write="..max_write.." writes="..io)
 return {files=files,peak=peak,writes=writes}

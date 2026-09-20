@@ -114,10 +114,11 @@ function on_enter(root)
   log(_VERSION.." main lua "..badge.sys.heap())
   -- Render sprite images once, a few rows per tick, before any widgets exist.
   -- Bump the number when sprites change.
-  local ready=badge.fs.exists("sprites10.ok")
-  for i=1,4 do ready=ready and badge.fs.exists(spr(i,false)) end
-  if not ready then
-    S=9 TMP=badge.ui.label(root,"First launch:\npreparing sprites...") TMP:align("center",0,0)
+  local missing=badge.fs.read("sprites10.ok")~="10" and "sprites10.ok" or nil
+  for i=1,4 do if not badge.fs.exists(spr(i)) then missing=spr(i) end end
+  if missing then
+    log("prepare: missing/invalid "..missing)
+    S=9 nxt=badge.sys.ms() TMP=badge.ui.label(root,"Preparing sprites...") TMP:align("center",0,0)
     require("gen") gc() log("renderer loaded")
   else start() end
   on_enter=nil -- Release initialization code and its GC-configuration helper.
@@ -148,7 +149,9 @@ function on_tick()
   end
   if S==9 then
     if (now//150)%2==0 then badge.led.set_all(0,30,120) else badge.led.set_all(0,10,40) end badge.led.show()
-    if GEN() then S=11 GEN=nil SPR=nil gc() log("renderer dropped") start() end
+    S=13 local done,id=GEN() S=9
+    if id then TMP:set_text("Preparing sprite "..id.."/4") end
+    if done then S=11 GEN=nil SPR=nil gc() log("sprites ready in "..(badge.sys.ms()-nxt).."ms") start() end
     return
   end
   if now<frame then return end

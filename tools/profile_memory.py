@@ -28,6 +28,7 @@ def profile(directory, revision=None):
     glob.WRITE = lambda n, data: files.__setitem__(n, data)
     glob.APPEND = lambda n, data: files.__setitem__(n, files.get(n, b'') + data)
     glob.EXISTS = lambda n: n in files
+    glob.FSREAD = lambda n: files.get(n)
     glob.REMOVE = lambda n: files.pop(n, None) is not None
     glob.MARK = lambda name, used: marks.__setitem__(name.decode(), used)
     fn = rt.execute((ROOT / 'tools/memory_probe.lua').read_bytes())

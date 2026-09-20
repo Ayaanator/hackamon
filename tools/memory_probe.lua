@@ -26,7 +26,7 @@ badge={
  gc_step=function() collectgarbage("step") end,
  stats=function() return {lua_used=badge.sys.heap(),lua_peak=0,free_heap=77728,widgets=widgets} end},
  store={get_int=function(k,d) return cache[k] or d end,set_int=function(k,v) cache[k]=v end},
- fs={write=WRITE,append=APPEND,exists=EXISTS,remove=REMOVE},
+ fs={write=WRITE,append=APPEND,exists=EXISTS,remove=REMOVE,read=FSREAD},
  nfc={enable=function() return true end,disable=noop,
  clear=function() badge.nfc.text=nil end,
  card=function() if badge.nfc.text then return true end end,

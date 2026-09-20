@@ -71,11 +71,11 @@ The complete installed app, **after generation**, includes code, manifest, four
 
 | Configuration | Installed bytes | Files |
 | --- | ---: | ---: |
-| Text files with LF, with icon | 36,344 | 12 |
-| Text files with CRLF, with icon | **36,784** | **12** |
-| Text files with CRLF, without icon | 31,480 | 11 |
+| Text files with LF, with icon | 36,018 | 12 |
+| Text files with CRLF, with icon | **36,472** | **12** |
+| Text files with CRLF, without icon | 31,168 | 11 |
 
-This leaves **12,368 bytes** under the firmware's 49,152-byte sharing limit even
+This leaves **12,680 bytes** under the firmware's 49,152-byte sharing limit even
 with the image icon and Windows line endings. Our build rejects anything above
 **36 KiB**, rather than just checking that it barely fits 48 KiB. The harness also
 counts the actual generated files, independently of the build's expected sizes.
@@ -97,18 +97,21 @@ File size and runtime RAM are separate budgets. This version also reduces RAM:
 - Initialization functions, sprite renderer/art, screen builder and title functions
   are released when their stage is complete. Screen creation remains one widget
   per tick, separate from sprite writes and module compilation.
-- Each sprite append is 160 bytes. No complete bitmap is assembled in Lua. The
+- Each append batches eight output rows (640 bytes; the first write is 652 bytes
+  including the header). No complete bitmap is assembled in Lua. The
   completion marker is cleared before regeneration, so interrupted writes are retried
-  on a fresh launch. Recipients reuse transferred sprites without rebuilding them.
+  on a fresh launch. Write errors and a missing marker read-back stop preparation
+  with an explicit error; HOME exits safely. Recipients reuse transferred sprites
+  without rebuilding them.
 
 A repeatable **64-bit host Lua 5.5** comparison against commit `be431b3` gives:
 
 | Phase | Previous live Lua bytes | New live Lua bytes |
 | --- | ---: | ---: |
-| Title | 33,586 | 25,694 |
-| Home after loading gameplay | 56,610 | 46,406 |
-| Battle | 56,863 | 46,659 |
-| Attack | 58,228 | 47,692 |
+| Title | 33,586 | 30,066 |
+| Home after loading gameplay | 56,610 | 46,682 |
+| Battle | 56,863 | 46,935 |
+| Attack | 58,228 | 47,968 |
 
 These are post-GC live game allocations above the same mock-runtime baseline,
 with flash contents held outside Lua. The attack measurement is about **18% lower**.
@@ -119,6 +122,29 @@ The manifest's 96 KiB is a ceiling, not a reservation. It does not consume or su
 96 KiB automatically. Actual physical-badge capacity still needs verification with
 the sparse `lua=... peak=... free=... widgets=...` console logs and `heap` before launch.
 Do not increase the quota or delete unrelated apps as a RAM remedy.
+
+## Why preparation was slow
+
+The previous row-at-a-time renderer made **85 separate flash-write calls** for four
+sprites. Small writes limited temporary memory, but repeatedly incurred filesystem
+overhead. This renderer batches a few rows into **21 writes**, at most one per tick,
+while keeping its write buffer under 1 KB. It caches palette conversions and uses
+incremental GC during generation. Fewer writes are verified; real seconds saved
+still depend on the physical badge and are not measured by the host tests.
+
+The screen shows the current sprite number and the console reports elapsed time.
+Normally preparation happens only when sprites or their completion marker are
+missing/invalid, not on every reopen. Startup logs `prepare: missing/invalid ...`
+with the file that triggered regeneration. If this repeats, after loading run:
+
+```
+cat /littlefs/apps/hackamon/sprites10.ok
+```
+
+It should contain `10`. Capture that output and the first preparation/error log;
+repeated cache loss needs diagnosis, not an assumption that a two-minute load is
+normal. Existing valid version-10 sprites are byte-identical and are reused by
+this update. The host suite verifies zero write calls on cached reopen.
 
 ## Share and verify
 
@@ -134,11 +160,13 @@ badge. Firmware versions, available native heap and fragmentation still differ.
 
 - `python tools/build.py`: regenerates `dist/`; budgets for the icon and CRLF by
   default; enforces the 36 KiB target and 16-file limit. `--without-icon` reports the
-  optional smaller variant. Comment removal reduces transfer bytes, not runtime RAM.
-- `python tools/run_harness.py` (requires `pip install lupa`): **40 scenarios** across
+  optional smaller variant. Comment and indentation removal reduce transfer bytes,
+  not runtime RAM.
+- `python tools/run_harness.py` (requires `pip install lupa`): **52 scenarios** across
   Lua 5.4 / 5.5 and source / deployment files. Checks cold and recipient launches,
   missing assets, migration preserving saves/icon, interrupted writes and recovery,
-  invalid saves, unavailable NFC, injected setup errors, battle/switch/capture/loss,
+  invalid saves, unavailable NFC, injected setup/storage errors, missing marker
+  read-back, battle/switch/capture/loss,
   repeated encounters, bounded widget creation, pixel format and actual installed size.
 - `python tools/profile_memory.py --compare be431b3`: repeats the live Lua comparison
   above using the baseline commit's deployment files and the current `dist/` files.
