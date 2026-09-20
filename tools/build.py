@@ -60,7 +60,7 @@ def build(with_icon=True):
     sizes['manifest.cfg'] = len(manifest.encode('utf-8'))
     sizes['main.lua'] = len(body.encode('utf-8'))
     assert sizes['main.lua'] <= 65536
-    sizes['sprites10.ok'] = 2
+    sizes['sprites11.ok'] = 2
     sizes['trainer.id'] = 16
     for i in range(1, 6):
         sizes[f'p{i}.bin'] = 12 + 40 * 40 * 2

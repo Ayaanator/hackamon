@@ -12,11 +12,11 @@ SPR={
   "5.6k13.k6ak11.k8ak10.kaawk3awk10.kaakk3akk10.k8ak11.kaak3ak12.kk5a4k8.kbb5k3cdk6.k3bk3ek4cdk5.k3bk4ek4cdk4.k3bk4ek3cdck5.kbkk4ekccddk7.kk5ek3dk7.kbbk3e5k7.k3b5k3bk7.k3bk3.k3bk7.k3bk3.k3bk8.3k5.3k26."}, -- Squirtle
  {{k=0x202020,a=0x60c8a8,b=0x309878,c=0x80d860,d=0x40a040,r=0xd03030,w=0xffffff},
   "10.6k12.kk5cdk10.k3cdd3cdk8.kccd4cdcck7.kkcd6cddk6.kaakkcddccddk6.k5a7k6.k12ak5.kaark6akraak4.kaakk6akkaak4.k15ak3.kak4akbb3akaak3.kaa4k9ak3.kb6ab4abaak4.k4akk5akbbk4.k4ak.k4ak.kk4.k3bk..k4bk7.k3bk..k4bk8.3k4.4k26."}, -- Bulbasaur
- {{k=0x202020,a=0xd8d0e8,b=0x9890b8,c=0xa050c8,w=0xb040ff},
-  "7.k3.k15.kk.kk15.kakak14.k5ak13.kawkwak14.k3ak16.kak15.kkabbkk12.kaakbbkaak9.kaakabbkaak9.4kaabk.kk..kk8.kaabk4.kcck7.kaabck4.kck6.kaa3caak..kck5.k3akccaak.kcck5.kaak.kcaak3ck6.kaak..kaakcck7.kaak..kaa3k7.k3ak..k4ak7.5k..5k4."}, -- Mewtwo
+ {{k=0x302038,a=0xe8e0f0,b=0xaaa0c0,c=0xc858a8,d=0xf080d0,w=0xffffff,r=0xe050d8},
+  "6.kk..kk14.kak.kak13.k5ak12.kawrakwrk12.k4abk14.kbbk14.3kaa3k10.kk7abkk7.kak.k4abk.kak5.kk..k4abk..kk10.kabbk5.kk8.kaccbk3.kddk6.kaa3cbk..kcdk5.kaabkccabk.kcck5.kaak.kcaak.kcck5.kaak..kaak3ck6.kabk..kabkcck6.k3ak..kaabkk6.kawaak..kaawak7.4k4.4k4."}, -- Mewtwo
 }
 
-local job=-10
+local job=-11
 local function px(c)
   local v=(c//65536//8)*2048+((c//256)%256//4)*32+(c%256//8)
   return string.char(v%256,v//256)
@@ -28,7 +28,8 @@ GEN=function()
   if job<0 then
     -- One obsolete generated asset per tick; keep saves and the launcher icon.
     local i=-job
-    if i==10 then badge.fs.remove("sprites10.ok")
+    if i==11 then badge.fs.remove("sprites11.ok")
+    elseif i==10 then badge.fs.remove("sprites10.ok")
     elseif i==9 then badge.fs.remove("sprites9.ok")
     else badge.fs.remove((i%2==0 and "m" or "s")..((i+1)//2)..".bin") end
     job=job+1 return false
@@ -36,8 +37,8 @@ GEN=function()
   if job>=25 then
     -- Read back one sprite per tick; do not trust exists() on affected firmware.
     if job<30 then assert(valid(job-24),"Sprite invalid: "..(job-24))
-    elseif job==30 then written(badge.fs.write("sprites10.ok","10"))
-    else assert(badge.fs.read("sprites10.ok")=="10","Sprite marker not saved") return true end
+    elseif job==30 then written(badge.fs.write("sprites11.ok","11"))
+    else assert(badge.fs.read("sprites11.ok")=="11","Sprite marker not saved") return true end
     job=job+1 return false
   end
   local id,part=job//5+1,job%5

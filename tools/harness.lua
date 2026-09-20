@@ -97,8 +97,8 @@ badge={
         files[n]=d return
       end
       io=io+1
-      if n=="sprites10.ok" and mode=="marker_error" then return nil,"storage quota" end
-      if n=="sprites10.ok" and mode=="silent_marker" then return end
+      if n=="sprites11.ok" and mode=="marker_error" then return nil,"storage quota" end
+      if n=="sprites11.ok" and mode=="silent_marker" then return end
       max_write=math.max(max_write,#d) writes=writes+1 files[n]=d
     end,
     append=function(n,d)
@@ -181,7 +181,7 @@ end
 if mode=="interrupted" then
   local ok,err=pcall(function() ticks(120) end)
   assert(not ok and string.find(err,"injected"),"expected interrupted write")
-  assert(files["sprites10.ok"]==nil,"stale completion marker survived interrupted regeneration")
+  assert(files["sprites11.ok"]==nil,"stale completion marker survived interrupted regeneration")
   return {files=files,peak=peak,writes=writes}
 end
 if mode=="screen_error" or mode=="widget_error" then
@@ -204,11 +204,11 @@ for i=1,5 do
     assert(string.sub(front,a,a+1)==string.sub(back,b,b+1),"incorrect 2x pixel scale")
   end end
 end
-assert(files["sprites10.ok"]=="10")
+assert(files["sprites11.ok"]=="11")
 assert(max_write<=652,"renderer exceeded the 652-byte chunk bound")
 assert(io==0 or io==26,"expected zero cached writes or 26 generation writes")
 if mode=="recipient" or mode=="exists_false" then assert(writes==0,"received sprites were regenerated") end
-if mode=="missing" or mode=="upgrade" or mode=="short_sprite" then assert(writes==6,"missing sprite not repaired") end
+if mode=="missing" or mode=="upgrade" or mode=="short_sprite" or mode=="sprite_upgrade" then assert(writes==6,"missing/old sprite not repaired") end
 assert(TITLE,"title not loaded")
 if mode=="upgrade" then
   for i=1,4 do assert(files["m"..i..".bin"]==nil and files["s"..i..".bin"]==nil,"old sprite survived migration") end
@@ -372,15 +372,31 @@ for _=1,300 do
 end
 while cur~=4 do press(B.DOWN) end
 press(B.A) assert(me.id==5 and me.max==100,"Mewtwo switch failed") drain()
+-- Drive real dialogue/cursor/FX transitions through all four boss faints.
+button_cb(B.HOME,2) owned,act=15,1 home() encounter("PKM04")
+local rng=badge.sys.random
+badge.sys.random=function(n) return n==16 and 15 or n==10 and 9 or n==4 and 1 or 0 end
+for remaining=3,0,-1 do
+  me.hp=1 press(B.A) drain()
+  if remaining>0 then
+    assert(S==5 and me.hp==0,"faint skipped the replacement menu")
+    press(B.B) assert(S==5,"B allowed a fainted Pokemon to act")
+    local hp=en.hp
+    press(B.A) drain()
+    assert(S==3 and me.hp==me.max and en.hp==hp,"replacement was not free")
+  else assert(S==0 and owned==15,"boss wipe erased collection or failed to exit") end
+end
+badge.sys.random=rng
+assert(widgets==settled and peak<=17,"boss replacement allocated extra widgets")
 -- Both attacks and both sides use purple, with the original special timing.
 for _,target in ipairs({"me","en"}) do
   me,en=side(5),side(5,true)
   FX.idle(5)
   for _,pat in ipairs({"hit","psyL"}) do
     S=3 FX.start(pat,target) ticks(1,80)
-    if pat=="psyL" then assert(leds[2]==0xb040ff and not FX.impact())
+    if pat=="psyL" then assert(leds[2]==0xe050d8 and not FX.impact())
     else local k=80+math.floor(150*math.abs(math.sin(80/130)))
-      assert(leds[1]==(176*k//255)*65536+(64*k//255)*256+k)
+      assert(leds[1]==(224*k//255)*65536+(80*k//255)*256+(216*k//255))
     end
     ticks(1,4000)
   end

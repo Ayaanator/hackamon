@@ -12,7 +12,7 @@ end
 local d,step= nil,0
 
 -- A moving parade reuses the enemy image; no separate wipe widget or rainbow table.
-local colors={0xffa000,0xff1800,0x0030ff,0x08d020,0xb040ff}
+local colors={0xffa000,0xff1800,0x0030ff,0x08d020,0xe050d8}
 local t0,pk,finish,STAGE
 TITLE={}
 function TITLE.go() finish=true end

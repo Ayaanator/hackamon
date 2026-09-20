@@ -120,30 +120,66 @@ setup(3,4) en.hp=1 en.seed=1 me.hp=10 me.par=1 rolls[4]=0
 -- Force the enemy to use a status move; player is immobilized, seed takes the final 1 HP.
 rolls[10]=9 move(1)
 assert(en.hp==0 and me.hp==11,"seed must heal actual damage, not the nominal 1/8")
--- Mewtwo uses level-15 non-HP stats, with the requested custom 100 HP.
+-- Mewtwo uses custom boss stats: lower damage/defenses, still 100 HP.
 assert(P[5][1]=="MEWTWO" and P[5][2]==100 and P[5][3]==5)
-for j,v in ipairs({38,32,51,32,44}) do assert(P[5][j+6]==v) end
+for j,v in ipairs({20,18,13,18,33}) do assert(P[5][j+6]==v) end
 assert(P[5][4]=="SWIFT" and P[5][5]=="PSYSTRIKE")
 -- Swift is special, Normal/60, no Psychic STAB, burn penalty or Defense-stage effect.
 setup(5,3) move(1)
-assert(lines[1].enemy==16 and lines[1].pattern=="hit" and en.burn==0,"Swift should deal 22")
+assert(lines[1].enemy==31 and lines[1].pattern=="hit" and en.burn==0,"Swift should deal 7")
 setup(5,3) me.burn=1 en.def=6 move(1)
-assert(lines[1].enemy==16,"Swift incorrectly used physical rules")
-setup(5,3) rolls[16]=0 move(1) assert(lines[1].enemy==20,"Swift minimum roll should deal 18")
+assert(lines[1].enemy==31,"Swift incorrectly used physical rules")
+setup(5,3) rolls[16]=0 move(1) assert(lines[1].enemy==33,"Swift minimum roll should deal 5")
 -- Psystrike is Psychic/100, uses Sp. Attack against physical Defense, with STAB.
 setup(5,3) en.hp=200 move(2)
-assert(lines[1].enemy==146 and lines[1].pattern=="psyL" and en.burn==0,"Psystrike should deal 54")
+assert(lines[1].enemy==185 and lines[1].pattern=="psyL" and en.burn==0,"Psystrike should deal 15")
 setup(5,3) me.burn=1 en.def=2 en.hp=200 move(2)
-assert(lines[1].enemy==172,"Psystrike must respect Withdraw, not burn")
+assert(lines[1].enemy==191,"Psystrike must respect Withdraw, not burn")
 setup(5,4) en.hp=200 move(2)
-assert(lines[1].enemy==68 and find("super"),"Bulbasaur's Poison typing is weak to Psychic")
+assert(lines[1].enemy==164 and find("super"),"Bulbasaur's Poison typing is weak to Psychic")
 setup(5,5) move(2)
-assert(lines[1].enemy==80 and find("not very"),"Mewtwo resists Psychic")
+assert(lines[1].enemy==91 and find("not very"),"Mewtwo resists Psychic")
 setup(3,5) rolls[10]=9 move(1)
-assert(lines[1].pattern=="psyL" and lines[1].target=="me" and me.hp==0,"enemy cannot use Psystrike")
+assert(lines[1].pattern=="psyL" and lines[1].target=="me" and me.hp==23,"enemy cannot use Psystrike")
 setup(1,5) move(1)
 assert(lines[1].text:find("PIKACHU used",1,true),"Quick Attack lost priority against Mewtwo")
 -- Loss ends the battle and heals at home; it no longer deletes the collection.
-setup(3,5) me.hp=1 move(1) finished()
+setup(3,2) me.hp=1 move(1) finished()
 assert(S==0 and owned==31 and act==3,"loss changed saved ownership/lead")
+-- Neither Mewtwo move can one-shot any healthy starter, even at maximum roll.
+for id=1,4 do for choice=1,2 do for roll=0,15 do
+  setup(5,id) rolls[16]=roll move(choice)
+  assert(en.hp>0,"Mewtwo one-shot a healthy starter")
+end end end
+-- Starter hits are stronger against Mewtwo's lower defenses.
+setup(1,5) move(1) assert(lines[1].enemy==91,"Quick Attack should deal 9")
+setup(1,5) rolls[16]=0 move(1) assert(lines[1].enemy==93,"Quick Attack minimum should deal 7")
+setup(2,5) move(2)
+assert(find("CHARMANDER used").enemy==85,"Ember should deal 15 before burn")
+-- Boss seed resistance prevents percentage damage from replacing the whole team.
+setup(4,5) move(2) assert(en.seed==1 and en.hp==97,"Mewtwo seed drain should be 3")
+setup(4,5) en.hp=1 en.seed=1 me.par=1 rolls[4]=0 move(1)
+assert(en.hp==0,"resisted seed must still finish a weakened boss")
+-- Every starter is required, regardless of which other ownership bits are set.
+for mask=1,31,2 do
+  setup(1,3) owned=mask
+  local before=en
+  BT.encounter(5)
+  if mask%16~=15 then
+    assert(en==before and find("Bring PIKACHU"),"incomplete team reached the boss")
+    finished() assert(S==0)
+  else assert(en.id==5 and en.hp==100) end
+end
+-- Boss faint replacements are free; cancellation cannot revive/act with a fainted lead.
+setup(1,5) me.hp=1 rolls[10]=9 move(1) finished()
+assert(S==5 and team[1].hp==0,"boss faint ended the whole battle")
+local boss_hp=en.hp
+BT.button(false,false,false,true) assert(S==5,"cancel returned to a fainted Pokemon")
+cur=1 BT.button(false,false,true,false)
+assert(me.id==2 and me.hp==36 and en.hp==boss_hp,"replacement consumed an enemy attack")
+finished() assert(S==3)
+-- Only running out of surviving teammates ends a Mewtwo battle.
+setup(1,5) me.hp=1 for i=2,5 do team[i].hp=0 end
+rolls[10]=9 move(1) finished()
+assert(S==0 and owned==31,"team wipe did not return home with collection intact")
 print("BATTLE CHECKS OK "..dir)

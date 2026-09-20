@@ -14,6 +14,11 @@ local function others()
   for i=1,5 do if team[i] and i~=me.id and team[i].hp>0 then o[#o+1]=i t[#t+1]=P[i][1] end end
   return o,t
 end
+local function choose()
+  local o,t=others()
+  if #o==0 then W.MSG:set_text("No other Pokemon\ncan fight!") return end
+  S=5 cur=1 menu(t) W.MSG:set_text("Switch to\nwhich Pokemon?")
+end
 
 local function use(u,t,special,who)
   if u.hp==0 or t.hp==0 then return end
@@ -54,7 +59,7 @@ end
 local function tick(s,o,who,seed)
   if s.hp==0 or o.hp==0 then return end
   if seed and s.seed>0 then
-    local drain=math.min(s.hp,math.max(1,s.max//8))
+    local drain=math.min(s.hp,math.max(1,s.max//(s.id==5 and 32 or 8)))
     s.hp=s.hp-drain o.hp=math.min(o.max,o.hp+drain)
     push("LEECH SEED saps\n"..s.name.."!",who,"seed")
   end
@@ -66,7 +71,7 @@ local function speed(s) return P[s.id][11]//(s.par>0 and 2 or 1) end
 -- Quick Attack has +1 priority. Otherwise Speed decides; ties are random.
 local function turn(move)
   local fx=P[en.id][6]
-  local special=badge.sys.random(10)>=6 and (fx=="burn" or fx=="psy" or (fx=="seed" and me.seed==0 and me.id~=4)
+  local special=badge.sys.random(10)>=(en.id==5 and 2 or 6) and (fx=="burn" or fx=="psy" or (fx=="seed" and me.seed==0 and me.id~=4)
     or (fx=="par" and me.par+me.burn==0 and me.id~=1) or (fx=="def" and en.def<6))
   local a=speed(me)+(move==1 and me.id==1 and 100 or 0)
   local b=speed(en)+(not special and en.id==1 and 100 or 0)
@@ -85,13 +90,18 @@ local function turn(move)
     else owned=owned+BIT[en.id] push("You caught\n"..P[en.id][1].."!",nil,"win") save() end
     f=home
   elseif me.hp==0 then
-    push(P[me.id][1].."\nfainted!",nil,"lose") push("Your team rests\nand recovers.")
-    f=home
+    push(P[me.id][1].."\nfainted!",nil,"lose")
+    local o=others()
+    if en.id==5 and #o>0 then f=choose
+    else push("Your team rests\nand recovers.") f=home end
   end
   say(f)
 end
 
 function BT.encounter(i)
+  if i==5 and owned%16~=15 then
+    push("Bring PIKACHU,\nCHARMANDER,") push("SQUIRTLE and\nBULBASAUR to\nface MEWTWO.") say(home) return
+  end
   en=side(i,true) team={} FX.reset() FX.idle(P[act][3])
   for j=1,5 do if own(j) then team[j]=side(j) end end
   me=team[act]
@@ -105,19 +115,20 @@ function BT.button(up,dn,A,B)
   if up or dn then cursor(up and -1 or 1) return end
   if S==3 then
     if A and cur==3 then
-      local o,t=others()
-      if #o==0 then W.MSG:set_text("No other Pokemon\ncan fight!") return end
-      S=5 cur=1 menu(t) W.MSG:set_text("Switch to\nwhich Pokemon?")
+      choose()
     elseif A then turn(cur)
     elseif B then push("Got away safely!") say(home) end
   elseif S==5 then
     local o,t=others()
-    if B then bmenu()
+    if B then if me.hp>0 then bmenu() end
     elseif A then
       local i=o[cur]
-      push("Come back,\n"..P[me.id][1].."!") me.seed,me.def=0,0
+      local fainted=me.hp==0
+      if not fainted then push("Come back,\n"..P[me.id][1].."!") end
+      me.seed,me.def=0,0
       me=team[i] PI:set_src(spr(i,true)) FX.idle(P[i][3])
-      push("Go! "..P[i][1].."!") turn()
+      push("Go! "..P[i][1].."!")
+      if fainted then say(bmenu) else turn() end
     end
   end
 end
